@@ -106,11 +106,11 @@ try:
     parser.createBlocks()
     parser.findFormatPatterns()
     parser.readFormatVersionInfo()
+    parser.addFindersToInvalid()
     parser.traverseBlocks()
 
     startX, startY = len(parser.blocks) - 1, len(parser.blocks[0]) - 1
-    # parser.readData(startX, startY)
-    # parser.readDataBlocks(startX, startY)
+    parser.readDataBlocks(startX, startY)
 
 except Exception as e:
     traceback.print_exc()

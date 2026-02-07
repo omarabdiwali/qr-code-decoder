@@ -215,7 +215,6 @@ class ImageParser:
         currentInfo = []
         currentStartIndex = []
         currentOtherIndex = None
-        testingIndex = []
 
         for obj in data:
             for i, value in obj.items():
@@ -251,7 +250,7 @@ class ImageParser:
         for i in range(0, len(self.blocks) - 5):
             for j in range(0, len(self.blocks[i]) - 5):
                 x, y = self.blocks[i][j]
-                if (x, y) in self.invalid:
+                if (i, j) in self.invalid:
                     continue
                 
                 patternCoords = []
@@ -264,7 +263,7 @@ class ImageParser:
                         if not self.isLightRoi(x1, y1) != shouldBeBlack:
                             valid = False
                             break
-                        patternCoords.append((x1, y1))
+                        patternCoords.append((i + a, j + b))
                     if not valid:
                         break
                 
@@ -282,16 +281,16 @@ class ImageParser:
             x, y = row[8]
             self.writer.addRect(x, y, self.blockSize, self.blockSize, "none", "purple", 0.3)
             formatInfo.append("0" if self.isLightRoi(x, y) else "1")
-            self.addInvalid(x, y)
+            self.addInvalid(idx, 8)
         
         for idx in range(8, -1, -1):
             row = self.blocks[idx]
             x, y = row[8]
-            if self.isInvalid(x, y)[0]:
+            if self.isInvalid(idx, 8)[0]:
                 continue
             self.writer.addRect(x, y, self.blockSize, self.blockSize, "none", "purple", 0.3)
             formatInfo.append("0" if self.isLightRoi(x, y) else "1")
-            self.addInvalid(x, y)
+            self.addInvalid(idx, 8)
 
         unmaskedFormat = format(int("".join(formatInfo), 2) ^ int(formatMask, 2), '015b')
         print(unmaskedFormat)
@@ -322,11 +321,12 @@ class ImageParser:
         
         self.fixPerimeter()
 
-    def isInvalid(self, x, y):
+    def isInvalid(self, i, j):
         # [TL, BR]
-        if (x, y) in self.invalid:
+        if (i, j) in self.invalid:
             return [True, "unknown"]
 
+        x, y = self.blocks[i][j]
         x, y = x + self.blockSize / 2, y + self.blockSize / 2
 
         for item in self.timingCoords:
@@ -396,8 +396,7 @@ class ImageParser:
                 tX, tY = pxX + (self.blockSize / 4), pxY + (self.blockSize / 2)
 
                 try:
-                    if self.isInvalid(pxX, pxY)[0]:
-                        # self.invalid.add()
+                    if self.isInvalid(i, j)[0]:
                         continue
                     
                     text = "W" if self.isLightRoi(pxX, pxY) else "B"
@@ -408,7 +407,7 @@ class ImageParser:
                     
                     out.addRect(pxX, pxY, self.blockSize, self.blockSize, bgColor, bgColor, 0.3)  
                     self.writer.addRect(pxX, pxY, self.blockSize, self.blockSize, "none", 'orange', 0.3)
-                    self.writer.addText(tX, tY, self.blockSize / 2, "red", text)
+                    # self.writer.addText(tX, tY, self.blockSize / 2, "red", text)
                 except Exception as e:
                     traceback.print_exc()
                     continue
@@ -417,62 +416,54 @@ class ImageParser:
         out.closeFile()
     
     def readData(self, i, j):
-        print(i, len(self.blocks), j, len(self.blocks[0]))
+        if self.isInvalid(i, j)[0]:
+            return
+
         x, y = self.blocks[i][j]
         info = "0" if self.isLightRoi(x, y) else "1"
         if self.getMaskFunction(i, j):
             info = "0" if "1" else "0"
         
-        self.writer.addText(x + (self.blockSize / 2.4), y + (self.blockSize / 1.3), self.blockSize / 2, "red", len(self.qr))
+        self.writer.addText(x + (self.blockSize / 4), y + (self.blockSize / 1.3), self.blockSize / 2.5, "red", len(self.qr))
         self.qr.append(info)
     
     def handleInvalidMovement(self, i, j):
-        movement = [1, -1] if self.goingUp else [-1, -1]
+        movement = [1, -2] if self.goingUp else [-1, -2]
         i1, j1 = i + movement[0], j + movement[1]
-        self.readData(i1, j1)
         self.goingUp = not self.goingUp
-        self.direction = 'left' 
+        self.direction = 'left'
         return [i1, j1]
 
-    def makeMovement(self, i, j, readData=True):
+    def makeMovement(self, i, j):
         if self.direction == 'left':
+            self.readData(i, j)
             i1, j1 = i, j - 1
-            if readData:
-                self.readData(i1, j1)
             self.direction = 'up' if self.goingUp else 'down'
             return [i1, j1]
         elif self.direction == 'up':
+            self.readData(i, j)
             i1, j1 = i - 1, j + 1
-            if readData:
-                self.readData(i1, j1)
             self.direction = 'left'
             return [i1, j1]
         else:
+            self.readData(i, j)
             i1, j1 = i + 1, j + 1
-            if readData:
-                self.readData(i1, j1)
             self.direction = 'left'
             return [i1, j1]            
 
-    def readDataBlocks(self, i, j):        
-        if i < 0 or (i == 0 and self.direction == 'up'):
-            i1, j1 = self.handleInvalidMovement(i, j)
-            return self.readDataBlocks(i1, j1)
-        if i >= len(self.blocks) or (i == len(self.blocks) - 1 and self.direction == 'down'):
-            i1, j1 = self.handleInvalidMovement(i, j)
-            return self.readDataBlocks(i1, j1)
-
-        if j <= 8:
-            return
+    def readDataBlocks(self, i, j):      
+        try:
+            if i < 0 or i >= len(self.blocks) or self.isInvalid(i, j)[1] == 'finder':
+                i1, j1 = self.handleInvalidMovement(i, j)
+                return self.readDataBlocks(i1, j1)
+            if j <= 8:
+                return
+            
+            i1, j1 = self.makeMovement(i, j)
+            return self.readDataBlocks(i1, j1) 
         
-        x, y = self.blocks[i][j]
-        invalid, _ = self.isInvalid(x, y)
-        if invalid:
-            i1, j1 = self.makeMovement(i, j, False)
-            return self.readDataBlocks(i1, j1)
-        
-        i1, j1 = self.makeMovement(i, j)
-        return self.readDataBlocks(i1, j1) 
+        except:
+            traceback.print_exc()
     
     def getMaskFunction(self, x, y):
         match self.mask:
@@ -485,3 +476,11 @@ class ImageParser:
             case 6: return ((x * y) % 2 + (x * y) % 3) % 2 == 0
             case 7: return ((x + y) % 2 + (x * y) % 3) % 2 == 0
             case _: return False
+    
+    def addFindersToInvalid(self):
+        for i in range(8):
+            for j in range(len(self.blocks[0]) - 8, len(self.blocks[0])):
+                    x, y = self.blocks[i][j]
+                    # self.writer.addRect(x, y, self.blockSize, self.blockSize, 'none', 'red', 0.5)
+                    # self.addInvalid(i, j, "Finder")
+        
