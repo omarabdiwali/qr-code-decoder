@@ -13,6 +13,7 @@ class ImageParser:
         self.goingUp = True
         self.direction = "left"
         self.blocks = []
+        self.version = ""
         self.qr = []
         self.invalid = set()
     
@@ -421,10 +422,15 @@ class ImageParser:
 
         x, y = self.blocks[i][j]
         info = "0" if self.isLightRoi(x, y) else "1"
-        if self.getMaskFunction(i, j):
-            info = "0" if "1" else "0"
+        versionEst = (len(self.blocks) - 21) / 4 + 1
         
-        self.writer.addText(x + (self.blockSize / 4), y + (self.blockSize / 1.3), self.blockSize / 2.5, "red", len(self.qr))
+        if versionEst >= 7 and 0 <= i <= 5 and len(self.blocks) - 11 <= j <= len(self.blocks) - 8:
+            self.version += info
+            return
+        if self.getMaskFunction(i, j):
+            info = "1" if info == "0" else "0"
+        
+        self.writer.addText(x + (self.blockSize / 4), y + (self.blockSize / 1.3), self.blockSize / 5, "red", len(self.qr))
         self.qr.append(info)
     
     def handleInvalidMovement(self, i, j):
@@ -451,20 +457,27 @@ class ImageParser:
             self.direction = 'left'
             return [i1, j1]            
 
-    def readDataBlocks(self, i, j):      
+    def readAndMoveDataBlocks(self, i, j):      
         try:
             if i < 0 or i >= len(self.blocks) or self.isInvalid(i, j)[1] == 'finder':
                 i1, j1 = self.handleInvalidMovement(i, j)
-                return self.readDataBlocks(i1, j1)
+                return [i1, j1, True]
             if j <= 8:
-                return
+                return [0, 0, False]
             
             i1, j1 = self.makeMovement(i, j)
-            return self.readDataBlocks(i1, j1) 
+            return [i1, j1, True]
         
         except:
             traceback.print_exc()
     
+    def readDataBlocks(self, i, j):
+        run = True
+        while run:
+            i, j, run = self.readAndMoveDataBlocks(i, j)
+
+        self.decodeData()
+
     def getMaskFunction(self, x, y):
         match self.mask:
             case 0: return (x + y) % 2 == 0
@@ -484,3 +497,34 @@ class ImageParser:
                     # self.writer.addRect(x, y, self.blockSize, self.blockSize, 'none', 'red', 0.5)
                     # self.addInvalid(i, j, "Finder")
         
+    def decodeData(self):
+        encoding = "".join(self.qr[:4])
+        encoding = int(encoding, 2)
+        print(encoding)
+        
+        index = 4
+        version = 9
+
+        if self.version:
+            print(self.version[-6:])
+            print(f"Version {int(self.version[-6:], 2)}")
+            version = int(self.version[:6], 2)
+        
+        match encoding:
+            case 4:
+                if version == 9:
+                    index += 8
+                else:
+                    index += 16
+                
+                byteLength = 8
+                length = "".join(self.qr[4:index])
+                print(length, int(length, 2))
+
+                for _ in range(int(length, 2)):
+                    char = "".join(self.qr[index:index+byteLength])
+                    index += byteLength
+                    print(chr(int(char, 2)), end="")
+                return
+            case _:
+                return
