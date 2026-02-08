@@ -88,7 +88,7 @@ try:
             elif key == "tr":
                 parser.endX = tr[0]
                 paddingTL = (tl[0] - parser.blockSize, tl[1])
-                paddingBR = (br[0], br[1] + parser.blockSize * 2)
+                paddingBR = (br[0], br[1] + parser.blockSize)
                 findersPos[key] = [paddingTL, paddingBR]
         else:
             tr, br = val

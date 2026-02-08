@@ -20,6 +20,13 @@ class ImageParser:
         self.version = None
         self.qr = []
         self.invalid = set()
+        self.alnumMap = [
+            '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 
+            'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 
+            'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 
+            'U', 'V', 'W', 'X', 'Y', 'Z', ' ', '$', '%', '*', 
+            '+', '-', '.', '/', ':'
+        ]
     
     def getColorValue(self, val):
         totalValue = sum(val) / 2
@@ -124,7 +131,7 @@ class ImageParser:
                             break
                     
                     elif self.diff(item["length"], startLength, tempBlockSize):
-                        if i - startIndex < 20 or item["color"] != 1:
+                        if totalSize < 6 or item["color"] != 1:
                             # print("MISS (idk):", item)
                             valid = False
                             break
@@ -132,7 +139,10 @@ class ImageParser:
                         # print(item)
                         break
                     
-                    else:                        
+                    else:
+                        if item["length"] > startLength:
+                            valid = False
+                            break
                         if not self.diff(item["length"], tempBlockSize, tempBlockSize):
                             valid = False
                             # print("MISS (size):", item)
@@ -181,19 +191,22 @@ class ImageParser:
                         tempBlockSize = tempBlockSize if tempBlockSize is not None else startLength / 7
                     
                     elif i == endIndex - 1:
-                        if item["color"] != 1:
+                        if item["color"] != 1 or totalSize < 6:
                             valid = False
                             break
                     
                     elif self.diff(item["length"], startLength, tempBlockSize):
-                        if totalSize < 4 or item["color"] != 1:
+                        if totalSize < 6 or item["color"] != 1:
                             # print("MISS (idk):", item)
                             valid = False
                             break
                         endIndex = i + 1
                         break
                     
-                    else:                        
+                    else:
+                        if item["length"] > startLength:
+                            valid = False
+                            break
                         if not self.diff(item["length"], tempBlockSize, tempBlockSize):
                             valid = False
                             break
@@ -300,15 +313,22 @@ class ImageParser:
         for idx in range(8):
             row = self.blocks[8]
             x, y = row[idx]
-            self.writer.addRect(x, y, self.blockSize, self.blockSize, "none", "purple", 0.5)
-            self.invalid.add((8, idx))
+            if self.isInvalid(8, idx)[0]:
+                continue
+            self.writer.addRect(x, y, self.blockSize, self.blockSize, "none", "green", 0.5)
+            self.addInvalid(8, idx)
         
         for idx in range(len(self.blocks) - 8, len(self.blocks)):
             row = self.blocks[8]
             x, y = row[idx]
-            self.writer.addRect(x, y, self.blockSize, self.blockSize, "none", "purple", 0.5)
-            self.invalid.add((8, idx))
+            if self.isInvalid(8, idx)[0]:
+                continue
+            self.writer.addRect(x, y, self.blockSize, self.blockSize, "none", "green", 0.5)
+            self.addInvalid(8, idx)
 
+        # Added invalid position to singular remainder bit
+        self.addInvalid(len(self.blocks) - 8, 8)
+        
         unmaskedFormat = format(int("".join(formatInfo), 2) ^ int(formatMask, 2), '015b')
         print(unmaskedFormat)
         
@@ -464,21 +484,16 @@ class ImageParser:
     def readData(self, i, j):
         invalid, reason = self.isInvalid(i, j)
         if invalid:
-            if j == 10:
-                print((i, j), reason)
             if i == 0 and j == len(self.blocks) - 10 and reason == 'version':
                 newJ = j - 2
                 self.direction = "left"
                 self.goingUp = not self.goingUp
                 return [i, newJ]
+            
             return
 
         if j < 0:
-            # print(i, j)
             return
-        
-        # if i == len(self.blocks) - 8 and j == 8:
-        #     if self.goingUp
 
         x, y = self.blocks[i][j]
         info = "0" if self.isLightRoi(x, y) else "1"
@@ -486,14 +501,17 @@ class ImageParser:
         if self.getMaskFunction(i, j):
             info = "1" if info == "0" else "0"
         
-        count = len(self.qr) % 8
-        blues = ['darkblue', 'blue', 'darkslateblue', 'dodgerblue', 'darkcyan', 'cadetblue', 'cyan', 'aqua']
-        reds = ['maroon', 'darkred', 'firebrick', 'crimson', 'red', 'indianred', 'orangered', 'tomato']
+        count = len(self.qr) - 12
+        idx = count % 8
+        blues = ['darkblue', 'blue', 'darkslateblue', 'dodgerblue', 'darkcyan', 'cadetblue', 'cyan', 'aqua'][::-1]
+        reds = ['maroon', 'darkred', 'firebrick', 'crimson', 'red', 'tomato', 'orangered', 'orange'][::-1]
 
-        if count == 0:
+        if count < 0:
+            self.color = "none"
+        elif idx == 0:
             self.color = blues[0] if self.color in reds or self.color == "none" else reds[0]
-        elif self.color != 'none':
-            self.color = blues[count] if self.color in blues else reds[count]
+        else:
+            self.color = blues[idx] if self.color in blues else reds[idx]
 
         self.writer.addRect(x, y, self.blockSize, self.blockSize, self.color, 'yellow', 0.1)
         self.writer.addText(x + (self.blockSize / 4), y + (self.blockSize / 1.3), self.blockSize / 5, "black", len(self.qr))
@@ -572,6 +590,7 @@ class ImageParser:
         encoding = int(encoding, 2)
         print(f"Encoding: {encoding}")
         actualData = []
+        startIndex = 4
 
         match self.ecl:
             case 1:
@@ -580,8 +599,64 @@ class ImageParser:
                 actualData = self.qr
         
         match encoding:
+            case 1:
+                length = 0
+                if self.version < 10:
+                    length = int("".join(actualData[startIndex:startIndex + 10]), 2)
+                    startIndex += 10
+                elif self.version < 27:
+                    length = int("".join(actualData[startIndex:startIndex + 12]), 2)
+                    startIndex += 12
+                else:
+                    length = int("".join(actualData[startIndex:startIndex + 14]), 2)
+                    startIndex += 14
+                
+                data = []
+                print("Length:", length)
+                print("Version:", self.version)
+                
+                for _ in range(0, length, 3):
+                    digits = "".join(actualData[startIndex:startIndex + 10])
+                    byte = str(int(digits, 2))
+                    data.append(byte)
+                    startIndex += 10
+                
+                result = "".join(data)
+                print(result)
+            
+            case 2:
+                length = 0
+                if self.version < 10:
+                    length = int("".join(actualData[startIndex:startIndex + 9]), 2)
+                    startIndex += 9
+                elif self.version < 27:
+                    length = int("".join(actualData[startIndex:startIndex + 11]), 2)
+                    startIndex += 11
+                else:
+                    length = int("".join(actualData[startIndex:startIndex + 13]), 2)
+                    startIndex += 13
+                
+                data = []
+                print("Length:", length)
+                print("Version:", self.version)
+
+                for _ in range(0, length, 2):
+                    alnum = "".join(actualData[startIndex:startIndex + 11])
+                    deci = int(alnum, 2)
+                    firstCharIdx, secondCharIdx = deci // 45, deci % 45
+                    
+                    if firstCharIdx < len(self.alnumMap):
+                        data.append(self.alnumMap[firstCharIdx])
+                    else:
+                        print("Invalid:", firstCharIdx)
+                    
+                    data.append(self.alnumMap[secondCharIdx])
+                    startIndex += 11
+                
+                result = "".join(data)
+                print(result)
+
             case 4:
-                startIndex = 4
                 length = int("".join(actualData[startIndex:startIndex + 8]), 2)
                 
                 if self.version > 9:
@@ -593,14 +668,21 @@ class ImageParser:
                 data = bytearray()
                 print("Length:", length)
                 print("Version:", self.version)
+                qrData = "".join(self.qr)
+                # print(qrData.count("0000"))
                 # print("QR Data:", "".join(self.qr))
                 
                 for _ in range(length):
                     char = "".join(actualData[startIndex:startIndex+8])
+                    if char[:4] == "0000":
+                        print("Possible end:", startIndex, "-", startIndex+8)
                     byte = int(char, 2)
+                    # print(byte, chr(byte))
                     data.append(byte)
                     startIndex += 8
                 
                 print(data.decode('utf-8', errors='replace'))
+                print(actualData[startIndex:startIndex+4])
             case _:
                 return
+    
