@@ -71,7 +71,7 @@ try:
             writer.addRect(tY["x"], item["start"], parser.blockSize, item["length"], "none", "gold", 0.3)
 
     timingList = list(timingBox.values())
-    findersList = []
+    findersPos = {}
 
     for key, val in finderCoords.items():
         if key == "tl" or key == "tr":
@@ -84,12 +84,12 @@ try:
                 parser.startX = bl[0]
                 parser.startY = tl[1]
                 padding = (br[0] + parser.blockSize, br[1] + parser.blockSize)
-                findersList.append([tl, padding])
+                findersPos[key] = [tl, padding]
             elif key == "tr":
                 parser.endX = tr[0]
                 paddingTL = (tl[0] - parser.blockSize, tl[1])
                 paddingBR = (br[0], br[1] + parser.blockSize * 2)
-                findersList.append([paddingTL, paddingBR])
+                findersPos[key] = [paddingTL, paddingBR]
         else:
             tr, br = val
             finderSide = abs(tr[1] - br[1])
@@ -98,11 +98,11 @@ try:
             # writer.addRect(tl[0], tl[1], finderSide, finderSide, "none", "blue", 0.4)
             paddingTL = (tl[0], tl[1] - parser.blockSize)
             paddingBR = (br[0] + parser.blockSize, br[1])
-            findersList.append([paddingTL, paddingBR])
+            findersPos[key] = [paddingTL, paddingBR]
             parser.endY = br[1]
 
     parser.timingCoords = timingList
-    parser.finderCoords = findersList
+    parser.finderCoords = findersPos
     parser.createBlocks()
     parser.findFormatPatterns()
     parser.readFormatVersionInfo()
@@ -111,7 +111,6 @@ try:
 
     startX, startY = len(parser.blocks) - 1, len(parser.blocks[0]) - 1
     parser.readDataBlocks(startX, startY)
-
 except Exception as e:
     traceback.print_exc()
 finally:

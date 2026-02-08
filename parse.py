@@ -8,12 +8,15 @@ class ImageParser:
         self.width = width
         self.height = height
         self.writer = writer
+        self.ecl = 1
         self.blockSize, self.startX, self.endX, self.startY, self.endY = [None for _ in range(5)]
-        self.timingCoords, self.finderCoords, self.mask = None, None, None,
+        self.timingCoords, self.finderCoords, self.mask = None, {}, None
+        self.color = "none"
+        self.versionInfoCoords = set()
         self.goingUp = True
         self.direction = "left"
         self.blocks = []
-        self.version = ""
+        self.version = None
         self.qr = []
         self.invalid = set()
     
@@ -300,6 +303,9 @@ class ImageParser:
         maskPattern = unmaskedFormat[2:5]
         print("ECL: {}, Mask Pattern: {}".format(errorCorrectionLevel, maskPattern))
         self.mask = int(maskPattern, 2)
+        self.ecl = int(errorCorrectionLevel, 2)
+
+        self.readVersion()
 
     def addInvalid(self, x, y):
         self.invalid.add((x, y))
@@ -326,6 +332,8 @@ class ImageParser:
         # [TL, BR]
         if (i, j) in self.invalid:
             return [True, "unknown"]
+        if (i, j) in self.versionInfoCoords:
+            return [True, "version"]
 
         x, y = self.blocks[i][j]
         x, y = x + self.blockSize / 2, y + self.blockSize / 2
@@ -337,12 +345,13 @@ class ImageParser:
             if x1 <= x <= x2 and y1 <= y <= y2:
                 return [True, "timing"]
         
-        for item in self.finderCoords:
+        for key, item in self.finderCoords.items():
             p1, p2 = item
             x1, y1 = p1
             x2, y2 = p2
+            
             if x1 <= x <= x2 and y1 <= y <= y2:
-                return [True, "finder"]
+                return [True, "finder"] if key != "bl" else [True, "unknown"]
         
         return [False, ""]    
 
@@ -406,7 +415,7 @@ class ImageParser:
                     if self.getMaskFunction(i, j):
                         bgColor = "black" if text == "W" else "white"
                     
-                    out.addRect(pxX, pxY, self.blockSize, self.blockSize, bgColor, bgColor, 0.3)  
+                    out.addRect(pxX, pxY, self.blockSize, self.blockSize, bgColor, 'red', 0.3)  
                     self.writer.addRect(pxX, pxY, self.blockSize, self.blockSize, "none", 'orange', 0.3)
                     # self.writer.addText(tX, tY, self.blockSize / 2, "red", text)
                 except Exception as e:
@@ -416,21 +425,52 @@ class ImageParser:
         out.closeNode('svg')
         out.closeFile()
     
+    def readVersion(self):
+        size = len(self.blocks)
+        calcVersion = (size - 17) // 4
+        self.version = calcVersion
+        if calcVersion < 7:
+            return
+
+        versionBits = 0
+        for j in range(6):
+            for i in range(size - 11, size - 8):
+                x, y = self.blocks[i][j]
+                x1, y1 = self.blocks[j][i]
+                bit = 1 if not self.isLightRoi(x, y) else 0
+                versionBits = (versionBits << 1) | bit
+                self.writer.addRect(x, y, self.blockSize, self.blockSize, 'blue', 'black', 0.1)
+                self.writer.addRect(x1, y1, self.blockSize, self.blockSize, 'blue', 'black', 0.1)
+                self.versionInfoCoords.add((i, j))
+                self.versionInfoCoords.add((j, i))
+        
     def readData(self, i, j):
-        if self.isInvalid(i, j)[0]:
+        invalid, reason = self.isInvalid(i, j)
+        if invalid:
+            if i == 0 and j == len(self.blocks) - 10 and reason == 'version':
+                newJ = j - 2
+                self.direction = "left"
+                self.goingUp = not self.goingUp
+                return [i, newJ]
             return
 
         x, y = self.blocks[i][j]
         info = "0" if self.isLightRoi(x, y) else "1"
-        versionEst = (len(self.blocks) - 21) / 4 + 1
         
-        if versionEst >= 7 and 0 <= i <= 5 and len(self.blocks) - 11 <= j <= len(self.blocks) - 8:
-            self.version += info
-            return
         if self.getMaskFunction(i, j):
             info = "1" if info == "0" else "0"
         
-        self.writer.addText(x + (self.blockSize / 4), y + (self.blockSize / 1.3), self.blockSize / 5, "red", len(self.qr))
+        count = max(-1, len(self.qr) - 12) % 8
+        blues = ['darkblue', 'blue', 'darkslateblue', 'dodgerblue', 'darkcyan', 'cadetblue', 'cyan', 'aqua']
+        reds = ['maroon', 'darkred', 'firebrick', 'crimson', 'red', 'indianred', 'orangered', 'tomato']
+
+        if count == 0:
+            self.color = blues[0] if self.color in reds or self.color == "none" else reds[0]
+        elif self.color != 'none':
+            self.color = blues[count] if self.color in blues else reds[count]
+
+        self.writer.addRect(x, y, self.blockSize, self.blockSize, self.color, 'yellow', 0.3)
+        self.writer.addText(x + (self.blockSize / 4), y + (self.blockSize / 1.3), self.blockSize / 5, "black", len(self.qr))
         self.qr.append(info)
     
     def handleInvalidMovement(self, i, j):
@@ -442,17 +482,23 @@ class ImageParser:
 
     def makeMovement(self, i, j):
         if self.direction == 'left':
-            self.readData(i, j)
+            resp = self.readData(i, j)
+            if resp:
+                return resp
             i1, j1 = i, j - 1
             self.direction = 'up' if self.goingUp else 'down'
             return [i1, j1]
         elif self.direction == 'up':
-            self.readData(i, j)
+            resp = self.readData(i, j)
+            if resp:
+                return resp
             i1, j1 = i - 1, j + 1
             self.direction = 'left'
             return [i1, j1]
         else:
-            self.readData(i, j)
+            resp = self.readData(i, j)
+            if resp:
+                return resp
             i1, j1 = i + 1, j + 1
             self.direction = 'left'
             return [i1, j1]            
@@ -462,7 +508,7 @@ class ImageParser:
             if i < 0 or i >= len(self.blocks) or self.isInvalid(i, j)[1] == 'finder':
                 i1, j1 = self.handleInvalidMovement(i, j)
                 return [i1, j1, True]
-            if j <= 8:
+            if j < 0:
                 return [0, 0, False]
             
             i1, j1 = self.makeMovement(i, j)
@@ -500,31 +546,37 @@ class ImageParser:
     def decodeData(self):
         encoding = "".join(self.qr[:4])
         encoding = int(encoding, 2)
-        print(encoding)
-        
-        index = 4
-        version = 9
+        print(f"Encoding: {encoding}")
+        actualData = []
 
-        if self.version:
-            print(self.version[-6:])
-            print(f"Version {int(self.version[-6:], 2)}")
-            version = int(self.version[:6], 2)
+        match self.ecl:
+            case 1:
+                actualData = self.qr
+            case _:
+                actualData = self.qr
         
         match encoding:
             case 4:
-                if version == 9:
-                    index += 8
-                else:
-                    index += 16
+                startIndex = 4
+                length = int("".join(actualData[startIndex:startIndex + 8]), 2)
                 
-                byteLength = 8
-                length = "".join(self.qr[4:index])
-                print(length, int(length, 2))
-
-                for _ in range(int(length, 2)):
-                    char = "".join(self.qr[index:index+byteLength])
-                    index += byteLength
-                    print(chr(int(char, 2)), end="")
-                return
+                if self.version > 9:
+                    length = int("".join(actualData[startIndex:startIndex+16]), 2)
+                    startIndex += 16
+                else:
+                    startIndex += 8
+                
+                data = bytearray()
+                print("Length:", length)
+                print("Version:", self.version)
+                # print("QR Data:", "".join(self.qr))
+                
+                for _ in range(length):
+                    char = "".join(actualData[startIndex:startIndex+8])
+                    byte = int(char, 2)
+                    data.append(byte)
+                    startIndex += 8
+                
+                print(data.decode('utf-8', errors='replace'))
             case _:
                 return
