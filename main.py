@@ -106,7 +106,7 @@ try:
     parser.createBlocks()
     parser.findFormatPatterns()
     parser.readFormatVersionInfo()
-    parser.addFindersToInvalid()
+    # parser.addFindersToInvalid()
     parser.traverseBlocks()
 
     startX, startY = len(parser.blocks) - 1, len(parser.blocks[0]) - 1

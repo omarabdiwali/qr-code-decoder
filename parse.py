@@ -13,6 +13,7 @@ class ImageParser:
         self.timingCoords, self.finderCoords, self.mask = None, {}, None
         self.color = "none"
         self.versionInfoCoords = set()
+        self.formatInfoCoords = set()
         self.goingUp = True
         self.direction = "left"
         self.blocks = []
@@ -283,7 +284,7 @@ class ImageParser:
         for idx in range(len(self.blocks) - 1, len(self.blocks) - 8, -1):
             row = self.blocks[idx]
             x, y = row[8]
-            self.writer.addRect(x, y, self.blockSize, self.blockSize, "none", "purple", 0.3)
+            self.writer.addRect(x, y, self.blockSize, self.blockSize, "none", "purple", 0.5)
             formatInfo.append("0" if self.isLightRoi(x, y) else "1")
             self.addInvalid(idx, 8)
         
@@ -292,9 +293,21 @@ class ImageParser:
             x, y = row[8]
             if self.isInvalid(idx, 8)[0]:
                 continue
-            self.writer.addRect(x, y, self.blockSize, self.blockSize, "none", "purple", 0.3)
+            self.writer.addRect(x, y, self.blockSize, self.blockSize, "none", "purple", 0.5)
             formatInfo.append("0" if self.isLightRoi(x, y) else "1")
             self.addInvalid(idx, 8)
+        
+        for idx in range(8):
+            row = self.blocks[8]
+            x, y = row[idx]
+            self.writer.addRect(x, y, self.blockSize, self.blockSize, "none", "purple", 0.5)
+            self.invalid.add((8, idx))
+        
+        for idx in range(len(self.blocks) - 8, len(self.blocks)):
+            row = self.blocks[8]
+            x, y = row[idx]
+            self.writer.addRect(x, y, self.blockSize, self.blockSize, "none", "purple", 0.5)
+            self.invalid.add((8, idx))
 
         unmaskedFormat = format(int("".join(formatInfo), 2) ^ int(formatMask, 2), '015b')
         print(unmaskedFormat)
@@ -330,10 +343,12 @@ class ImageParser:
 
     def isInvalid(self, i, j):
         # [TL, BR]
-        if (i, j) in self.invalid:
-            return [True, "unknown"]
+        if (i, j) in self.formatInfoCoords:
+            return [True, 'finder']
         if (i, j) in self.versionInfoCoords:
             return [True, "version"]
+        if (i, j) in self.invalid:
+            return [True, "unknown"]
 
         x, y = self.blocks[i][j]
         x, y = x + self.blockSize / 2, y + self.blockSize / 2
@@ -415,8 +430,8 @@ class ImageParser:
                     if self.getMaskFunction(i, j):
                         bgColor = "black" if text == "W" else "white"
                     
-                    out.addRect(pxX, pxY, self.blockSize, self.blockSize, bgColor, 'red', 0.3)  
-                    self.writer.addRect(pxX, pxY, self.blockSize, self.blockSize, "none", 'orange', 0.3)
+                    out.addRect(pxX, pxY, self.blockSize, self.blockSize, bgColor, 'red', 1)  
+                    # self.writer.addRect(pxX, pxY, self.blockSize, self.blockSize, "none", 'orange', 0.3)
                     # self.writer.addText(tX, tY, self.blockSize / 2, "red", text)
                 except Exception as e:
                     traceback.print_exc()
@@ -441,12 +456,16 @@ class ImageParser:
                 versionBits = (versionBits << 1) | bit
                 self.writer.addRect(x, y, self.blockSize, self.blockSize, 'blue', 'black', 0.1)
                 self.writer.addRect(x1, y1, self.blockSize, self.blockSize, 'blue', 'black', 0.1)
-                self.versionInfoCoords.add((i, j))
-                self.versionInfoCoords.add((j, i))
+                self.invalid.add((i, j))
+                self.invalid.add((j, i))
+                # self.versionInfoCoords.add((i, j))
+                # self.versionInfoCoords.add((j, i))
         
     def readData(self, i, j):
         invalid, reason = self.isInvalid(i, j)
         if invalid:
+            if j == 10:
+                print((i, j), reason)
             if i == 0 and j == len(self.blocks) - 10 and reason == 'version':
                 newJ = j - 2
                 self.direction = "left"
@@ -454,13 +473,20 @@ class ImageParser:
                 return [i, newJ]
             return
 
+        if j < 0:
+            # print(i, j)
+            return
+        
+        # if i == len(self.blocks) - 8 and j == 8:
+        #     if self.goingUp
+
         x, y = self.blocks[i][j]
         info = "0" if self.isLightRoi(x, y) else "1"
         
         if self.getMaskFunction(i, j):
             info = "1" if info == "0" else "0"
         
-        count = max(-1, len(self.qr) - 12) % 8
+        count = len(self.qr) % 8
         blues = ['darkblue', 'blue', 'darkslateblue', 'dodgerblue', 'darkcyan', 'cadetblue', 'cyan', 'aqua']
         reds = ['maroon', 'darkred', 'firebrick', 'crimson', 'red', 'indianred', 'orangered', 'tomato']
 
@@ -469,7 +495,7 @@ class ImageParser:
         elif self.color != 'none':
             self.color = blues[count] if self.color in blues else reds[count]
 
-        self.writer.addRect(x, y, self.blockSize, self.blockSize, self.color, 'yellow', 0.3)
+        self.writer.addRect(x, y, self.blockSize, self.blockSize, self.color, 'yellow', 0.1)
         self.writer.addText(x + (self.blockSize / 4), y + (self.blockSize / 1.3), self.blockSize / 5, "black", len(self.qr))
         self.qr.append(info)
     
@@ -508,7 +534,7 @@ class ImageParser:
             if i < 0 or i >= len(self.blocks) or self.isInvalid(i, j)[1] == 'finder':
                 i1, j1 = self.handleInvalidMovement(i, j)
                 return [i1, j1, True]
-            if j < 0:
+            if j < -1:
                 return [0, 0, False]
             
             i1, j1 = self.makeMovement(i, j)
@@ -537,11 +563,9 @@ class ImageParser:
             case _: return False
     
     def addFindersToInvalid(self):
-        for i in range(8):
-            for j in range(len(self.blocks[0]) - 8, len(self.blocks[0])):
-                    x, y = self.blocks[i][j]
-                    # self.writer.addRect(x, y, self.blockSize, self.blockSize, 'none', 'red', 0.5)
-                    # self.addInvalid(i, j, "Finder")
+        for idx in range(8):
+            rowIdx = len(self.blocks) - 7
+            self.invalid.add((rowIdx, idx))
         
     def decodeData(self):
         encoding = "".join(self.qr[:4])
