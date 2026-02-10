@@ -20,6 +20,49 @@ class ImageParser:
         self.version = None
         self.qr = []
         self.invalid = set()
+        self.eclMap = { 0: 'M', 1: 'L', 2: 'H', 3: 'Q' }
+        self.qrDataBlocks = {
+            "1-L": [(1, 19)], "1-M": [(1, 16)], "1-Q": [(1, 13)], "1-H": [(1, 9)],
+            "2-L": [(1, 34)], "2-M": [(1, 28)], "2-Q": [(1, 22)], "2-H": [(1, 16)],
+            "3-L": [(1, 55)], "3-M": [(1, 44)], "3-Q": [(2, 17)], "3-H": [(2, 13)],
+            "4-L": [(1, 80)], "4-M": [(2, 32)], "4-Q": [(2, 24)], "4-H": [(4, 9)],
+            "5-L": [(1, 108)], "5-M": [(2, 43)], "5-Q": [(2, 15), (2, 16)], "5-H": [(2, 11), (2, 12)],
+            "6-L": [(2, 68)], "6-M": [(4, 27)], "6-Q": [(4, 19)], "6-H": [(4, 15)],
+            "7-L": [(2, 78)], "7-M": [(4, 31)], "7-Q": [(2, 14), (4, 15)], "7-H": [(4, 13), (1, 14)],
+            "8-L": [(2, 97)], "8-M": [(2, 38), (2, 39)], "8-Q": [(4, 18), (2, 19)], "8-H": [(4, 14), (2, 15)],
+            "9-L": [(2, 116)], "9-M": [(3, 36), (2, 37)], "9-Q": [(4, 16), (4, 17)], "9-H": [(4, 12), (4, 13)],
+            "10-L": [(2, 68), (2, 69)], "10-M": [(4, 43), (1, 44)], "10-Q": [(6, 19), (2, 20)], "10-H": [(6, 15), (2, 16)],
+            "11-L": [(4, 81)], "11-M": [(1, 50), (4, 51)], "11-Q": [(4, 22), (4, 23)], "11-H": [(3, 12), (8, 13)],
+            "12-L": [(2, 92), (2, 93)], "12-M": [(6, 36), (2, 37)], "12-Q": [(4, 20), (6, 21)], "12-H": [(7, 14), (4, 15)],
+            "13-L": [(4, 107)], "13-M": [(8, 37), (1, 38)], "13-Q": [(8, 20), (4, 21)], "13-H": [(12, 11), (4, 12)],
+            "14-L": [(3, 115), (1, 116)], "14-M": [(4, 40), (5, 41)], "14-Q": [(11, 16), (5, 17)], "14-H": [(11, 12), (5, 13)],
+            "15-L": [(5, 87), (1, 88)], "15-M": [(5, 41), (5, 42)], "15-Q": [(5, 24), (7, 25)], "15-H": [(11, 12), (7, 13)],
+            "16-L": [(5, 98), (1, 99)], "16-M": [(7, 45), (3, 46)], "16-Q": [(15, 19), (2, 20)], "16-H": [(3, 15), (13, 16)],
+            "17-L": [(1, 107), (5, 108)], "17-M": [(10, 46), (1, 47)], "17-Q": [(1, 22), (15, 23)], "17-H": [(2, 14), (17, 15)],
+            "18-L": [(5, 120), (1, 121)], "18-M": [(9, 43), (4, 44)], "18-Q": [(17, 22), (1, 23)], "18-H": [(2, 14), (19, 15)],
+            "19-L": [(3, 113), (4, 114)], "19-M": [(3, 44), (11, 45)], "19-Q": [(17, 21), (4, 22)], "19-H": [(9, 13), (16, 14)],
+            "20-L": [(3, 107), (5, 108)], "20-M": [(3, 41), (13, 42)], "20-Q": [(15, 24), (5, 25)], "20-H": [(15, 15), (10, 16)],
+            "21-L": [(4, 116), (4, 117)], "21-M": [(17, 42)], "21-Q": [(17, 22), (6, 23)], "21-H": [(19, 16), (6, 17)],
+            "22-L": [(2, 111), (7, 112)], "22-M": [(17, 46)], "22-Q": [(7, 24), (16, 25)], "22-H": [(34, 13)],
+            "23-L": [(4, 121), (5, 122)], "23-M": [(4, 47), (14, 48)], "23-Q": [(11, 24), (14, 25)], "23-H": [(16, 15), (14, 16)],
+            "24-L": [(6, 117), (4, 118)], "24-M": [(6, 45), (14, 46)], "24-Q": [(11, 24), (16, 25)], "24-H": [(30, 16), (2, 17)],
+            "25-L": [(8, 106), (4, 107)], "25-M": [(8, 47), (13, 48)], "25-Q": [(7, 24), (22, 25)], "25-H": [(22, 15), (13, 16)],
+            "26-L": [(10, 114), (2, 115)], "26-M": [(19, 46), (4, 47)], "26-Q": [(28, 22), (6, 23)], "26-H": [(33, 16), (4, 17)],
+            "27-L": [(8, 122), (4, 123)], "27-M": [(22, 45), (3, 46)], "27-Q": [(8, 23), (26, 24)], "27-H": [(12, 15), (28, 16)],
+            "28-L": [(3, 117), (10, 118)], "28-M": [(3, 45), (23, 46)], "28-Q": [(4, 24), (31, 25)], "28-H": [(11, 15), (31, 16)],
+            "29-L": [(7, 116), (7, 117)], "29-M": [(21, 45), (7, 46)], "29-Q": [(1, 23), (37, 24)], "29-H": [(19, 15), (26, 16)],
+            "30-L": [(5, 115), (10, 116)], "30-M": [(19, 47), (10, 48)], "30-Q": [(15, 24), (25, 25)], "30-H": [(23, 15), (25, 16)],
+            "31-L": [(13, 115), (3, 116)], "31-M": [(2, 46), (29, 47)], "31-Q": [(42, 24), (1, 25)], "31-H": [(23, 15), (28, 16)],
+            "32-L": [(17, 115)], "32-M": [(10, 46), (23, 47)], "32-Q": [(10, 24), (35, 25)], "32-H": [(19, 15), (35, 16)],
+            "33-L": [(17, 115), (1, 116)], "33-M": [(14, 46), (21, 47)], "33-Q": [(29, 24), (19, 25)], "33-H": [(11, 15), (46, 16)],
+            "34-L": [(13, 115), (6, 116)], "34-M": [(14, 46), (23, 47)], "34-Q": [(44, 24), (7, 25)], "34-H": [(59, 16), (1, 17)],
+            "35-L": [(12, 121), (7, 122)], "35-M": [(12, 47), (26, 48)], "35-Q": [(39, 24), (14, 25)], "35-H": [(22, 15), (41, 16)],
+            "36-L": [(6, 121), (14, 122)], "36-M": [(6, 47), (34, 48)], "36-Q": [(46, 24), (10, 25)], "36-H": [(2, 15), (64, 16)],
+            "37-L": [(17, 122), (4, 123)], "37-M": [(29, 46), (14, 47)], "37-Q": [(49, 24), (10, 25)], "37-H": [(24, 15), (46, 16)],
+            "38-L": [(4, 122), (18, 123)], "38-M": [(13, 46), (32, 47)], "38-Q": [(48, 24), (14, 25)], "38-H": [(42, 15), (32, 16)],
+            "39-L": [(20, 117), (4, 118)], "39-M": [(40, 47), (7, 48)], "39-Q": [(43, 24), (22, 25)], "39-H": [(10, 15), (67, 16)],
+            "40-L": [(19, 118), (6, 119)], "40-M": [(18, 47), (31, 48)], "40-Q": [(34, 24), (34, 25)], "40-H": [(20, 15), (61, 16)]
+        }
         self.alnumMap = [
             '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 
             'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 
@@ -37,8 +80,8 @@ class ImageParser:
     
     def isLightRoi(self, x, y):
         middleX, middleY = (x + self.blockSize // 2), (y + self.blockSize // 2)
-        rgb = self.data[middleX, middleY]
-        return self.getColorValue(rgb) == 0
+        value = self.data[middleX, middleY]
+        return self.getColorValue(value) == 0
 
     def runLengthEncodingX(self):
         encoded = []
@@ -267,7 +310,6 @@ class ImageParser:
     def findFormatPatterns(self):
         for i in range(0, len(self.blocks) - 5):
             for j in range(0, len(self.blocks[i]) - 5):
-                x, y = self.blocks[i][j]
                 if (i, j) in self.invalid:
                     continue
                 
@@ -328,15 +370,13 @@ class ImageParser:
 
         # Added invalid position to singular remainder bit
         self.addInvalid(len(self.blocks) - 8, 8)
-        
-        unmaskedFormat = format(int("".join(formatInfo), 2) ^ int(formatMask, 2), '015b')
-        print(unmaskedFormat)
-        
-        errorCorrectionLevel = unmaskedFormat[:2]
-        maskPattern = unmaskedFormat[2:5]
-        print("ECL: {}, Mask Pattern: {}".format(errorCorrectionLevel, maskPattern))
-        self.mask = int(maskPattern, 2)
-        self.ecl = int(errorCorrectionLevel, 2)
+
+        unmaskedFormat = format(int("".join(formatInfo), 2) ^ int(formatMask, 2), '015b')        
+        errorCorrectionLevel = int(unmaskedFormat[:2], 2)
+        maskPattern = int(unmaskedFormat[2:5], 2)
+        self.ecl = self.eclMap[errorCorrectionLevel]
+        self.mask = maskPattern
+        print("ECL: {}, Mask Pattern: {}".format(self.ecl, self.mask))
 
         self.readVersion()
 
@@ -497,24 +537,27 @@ class ImageParser:
 
         x, y = self.blocks[i][j]
         info = "0" if self.isLightRoi(x, y) else "1"
+        textColor = "black" if info == "0" else "white"
         
         if self.getMaskFunction(i, j):
             info = "1" if info == "0" else "0"
         
         count = len(self.qr) - 12
         idx = count % 8
-        blues = ['darkblue', 'blue', 'darkslateblue', 'dodgerblue', 'darkcyan', 'cadetblue', 'cyan', 'aqua'][::-1]
-        reds = ['maroon', 'darkred', 'firebrick', 'crimson', 'red', 'tomato', 'orangered', 'orange'][::-1]
+        blues = ['blue', 'blue', 'darkslateblue', 'darkslateblue', 'darkcyan', 'darkcyan', 'cyan', 'cyan'][::-1]
+        reds = ['darkred', 'darkred', 'crimson', 'crimson', 'red', 'red', 'orangered', 'orangered'][::-1]
 
         if count < 0:
             self.color = "none"
         elif idx == 0:
             self.color = blues[0] if self.color in reds or self.color == "none" else reds[0]
+            textColor = "black"
         else:
             self.color = blues[idx] if self.color in blues else reds[idx]
+            textColor = "black"
 
         self.writer.addRect(x, y, self.blockSize, self.blockSize, self.color, 'yellow', 0.1)
-        self.writer.addText(x + (self.blockSize / 4), y + (self.blockSize / 1.3), self.blockSize / 5, "black", len(self.qr))
+        self.writer.addText(x + (self.blockSize / 4), y + (self.blockSize / 1.3), self.blockSize / 5, textColor, len(self.qr))
         self.qr.append(info)
     
     def handleInvalidMovement(self, i, j):
@@ -584,31 +627,58 @@ class ImageParser:
         for idx in range(8):
             rowIdx = len(self.blocks) - 7
             self.invalid.add((rowIdx, idx))
-        
-    def decodeData(self):
-        encoding = "".join(self.qr[:4])
-        encoding = int(encoding, 2)
-        print(f"Encoding: {encoding}")
-        actualData = []
-        startIndex = 4
+    
+    def getBlockSizes(self):
+        key = f"{self.version}-{self.ecl}"
+        struct = self.qrDataBlocks.get(key, [])
+        blockSizes = []
+        changeIndex = None
 
-        match self.ecl:
-            case 1:
-                actualData = self.qr
-            case _:
-                actualData = self.qr
+        for count, size in struct:
+            if len(blockSizes) > 0:
+                changeIndex = len(blockSizes)
+            for _ in range(count):
+                blockSizes.append(size)
+        
+        return [blockSizes, changeIndex]
+    
+    def decodeInterleaved(self, blockSizes, changeIndex):
+        errorBlocks = len(blockSizes)
+        totalData = sum(blockSizes)
+        bitstring = "".join(self.qr)
+        codewords = [int(bitstring[i:i+8], 2) for i in range(0, len(bitstring), 8)]
+        roundRobin = defaultdict(list)
+        rawData = codewords[:totalData]
+        turnNegativeIndex = totalData - (totalData % errorBlocks)
+
+        for i, byte in enumerate(rawData):
+            key = i % errorBlocks if i < turnNegativeIndex else changeIndex + (i % errorBlocks)
+            roundRobin[key].append(byte)
+        
+        finalStream = []
+        for key in range(errorBlocks):
+            finalStream += roundRobin[key]
+        
+        finalBits = "".join([f"{b:08b}" for b in finalStream])
+        return finalBits
+
+    def decodeData(self):
+        blockSizes, changeIndex = self.getBlockSizes()
+        bitstring = self.decodeInterleaved(blockSizes, changeIndex)
+        encoding = int(bitstring[:4], 2)
+        startIndex = 4
         
         match encoding:
             case 1:
                 length = 0
                 if self.version < 10:
-                    length = int("".join(actualData[startIndex:startIndex + 10]), 2)
+                    length = int(bitstring[startIndex:startIndex + 10], 2)
                     startIndex += 10
                 elif self.version < 27:
-                    length = int("".join(actualData[startIndex:startIndex + 12]), 2)
+                    length = int(bitstring[startIndex:startIndex + 12], 2)
                     startIndex += 12
                 else:
-                    length = int("".join(actualData[startIndex:startIndex + 14]), 2)
+                    length = int(bitstring[startIndex:startIndex + 14], 2)
                     startIndex += 14
                 
                 data = []
@@ -616,7 +686,7 @@ class ImageParser:
                 print("Version:", self.version)
                 
                 for _ in range(0, length, 3):
-                    digits = "".join(actualData[startIndex:startIndex + 10])
+                    digits = bitstring[startIndex:startIndex + 10]
                     byte = str(int(digits, 2))
                     data.append(byte)
                     startIndex += 10
@@ -627,13 +697,13 @@ class ImageParser:
             case 2:
                 length = 0
                 if self.version < 10:
-                    length = int("".join(actualData[startIndex:startIndex + 9]), 2)
+                    length = int(bitstring[startIndex:startIndex + 9], 2)
                     startIndex += 9
                 elif self.version < 27:
-                    length = int("".join(actualData[startIndex:startIndex + 11]), 2)
+                    length = int(bitstring[startIndex:startIndex + 11], 2)
                     startIndex += 11
                 else:
-                    length = int("".join(actualData[startIndex:startIndex + 13]), 2)
+                    length = int(bitstring[startIndex:startIndex + 13], 2)
                     startIndex += 13
                 
                 data = []
@@ -641,7 +711,7 @@ class ImageParser:
                 print("Version:", self.version)
 
                 for _ in range(0, length, 2):
-                    alnum = "".join(actualData[startIndex:startIndex + 11])
+                    alnum = bitstring[startIndex:startIndex + 11]
                     deci = int(alnum, 2)
                     firstCharIdx, secondCharIdx = deci // 45, deci % 45
                     
@@ -657,32 +727,27 @@ class ImageParser:
                 print(result)
 
             case 4:
-                length = int("".join(actualData[startIndex:startIndex + 8]), 2)
-                
-                if self.version > 9:
-                    length = int("".join(actualData[startIndex:startIndex+16]), 2)
-                    startIndex += 16
-                else:
+                length = int(bitstring[startIndex:startIndex + 8], 2)
+                if self.version < 10:
                     startIndex += 8
+                else:
+                    length = int(bitstring[startIndex:startIndex+16], 2)
+                    startIndex += 16                
                 
                 data = bytearray()
                 print("Length:", length)
                 print("Version:", self.version)
-                qrData = "".join(self.qr)
-                # print(qrData.count("0000"))
-                # print("QR Data:", "".join(self.qr))
                 
                 for _ in range(length):
-                    char = "".join(actualData[startIndex:startIndex+8])
-                    if char[:4] == "0000":
-                        print("Possible end:", startIndex, "-", startIndex+8)
-                    byte = int(char, 2)
-                    # print(byte, chr(byte))
-                    data.append(byte)
+                    char = bitstring[startIndex:startIndex+8]
+                    if char:
+                        byte = int(char, 2)
+                        data.append(byte)
+                    
                     startIndex += 8
                 
-                print(data.decode('utf-8', errors='replace'))
-                print(actualData[startIndex:startIndex+4])
+                result = data.decode('utf-8', errors='replace')
+                print(result)
             case _:
-                return
+                print("Unimplemented encoding type:", encoding)
     
