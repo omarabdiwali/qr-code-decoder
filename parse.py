@@ -12,8 +12,6 @@ class ImageParser:
         self.blockSize, self.startX, self.endX, self.startY, self.endY = [None for _ in range(5)]
         self.timingCoords, self.finderCoords, self.mask = None, {}, None
         self.color = "none"
-        self.versionInfoCoords = set()
-        self.formatInfoCoords = set()
         self.goingUp = True
         self.direction = "left"
         self.blocks = []
@@ -271,7 +269,7 @@ class ImageParser:
         
         return [timingX, timingY]
 
-    def getClosestMatch(self, moving, constant, expectedLength, data, direction='x'):
+    def getClosestMatch(self, moving, constant, expectedLength, data, direction):
         currentClosest = None
         currentInfo = []
         currentStartIndex = []
@@ -346,7 +344,7 @@ class ImageParser:
         for idx in range(8, -1, -1):
             row = self.blocks[idx]
             x, y = row[8]
-            if self.isInvalid(idx, 8)[0]:
+            if self.isInvalid(idx, 8):
                 continue
             self.writer.addRect(x, y, self.blockSize, self.blockSize, "none", "purple", 0.5)
             formatInfo.append("0" if self.isLightRoi(x, y) else "1")
@@ -355,7 +353,7 @@ class ImageParser:
         for idx in range(8):
             row = self.blocks[8]
             x, y = row[idx]
-            if self.isInvalid(8, idx)[0]:
+            if self.isInvalid(8, idx):
                 continue
             self.writer.addRect(x, y, self.blockSize, self.blockSize, "none", "green", 0.5)
             self.addInvalid(8, idx)
@@ -363,7 +361,7 @@ class ImageParser:
         for idx in range(len(self.blocks) - 8, len(self.blocks)):
             row = self.blocks[8]
             x, y = row[idx]
-            if self.isInvalid(8, idx)[0]:
+            if self.isInvalid(8, idx):
                 continue
             self.writer.addRect(x, y, self.blockSize, self.blockSize, "none", "green", 0.5)
             self.addInvalid(8, idx)
@@ -403,12 +401,8 @@ class ImageParser:
 
     def isInvalid(self, i, j):
         # [TL, BR]
-        if (i, j) in self.formatInfoCoords:
-            return [True, 'finder']
-        if (i, j) in self.versionInfoCoords:
-            return [True, "version"]
         if (i, j) in self.invalid:
-            return [True, "unknown"]
+            return True
 
         x, y = self.blocks[i][j]
         x, y = x + self.blockSize / 2, y + self.blockSize / 2
@@ -418,17 +412,17 @@ class ImageParser:
             x1, y1 = p1
             x2, y2 = p2
             if x1 <= x <= x2 and y1 <= y <= y2:
-                return [True, "timing"]
+                return True
         
-        for key, item in self.finderCoords.items():
+        for _, item in self.finderCoords.items():
             p1, p2 = item
             x1, y1 = p1
             x2, y2 = p2
             
             if x1 <= x <= x2 and y1 <= y <= y2:
-                return [True, "finder"] if key != "bl" else [True, "unknown"]
+                return True
         
-        return [False, ""]    
+        return False
 
     def fixPerimeter(self):
         for i in [0, -1]:
@@ -475,25 +469,20 @@ class ImageParser:
 
         for i in range(0, len(self.blocks)):
             for j in range(0, len(self.blocks[i])):
-                if j <= 8:
-                    continue
                 pxX, pxY = self.blocks[i][j]
-                tX, tY = pxX + (self.blockSize / 4), pxY + (self.blockSize / 2)
 
                 try:
-                    if self.isInvalid(i, j)[0]:
+                    if self.isInvalid(i, j):
                         continue
                     
                     text = "W" if self.isLightRoi(pxX, pxY) else "B"
                     bgColor = "black" if text == "B" else "white"
-                    
                     if self.getMaskFunction(i, j):
                         bgColor = "black" if text == "W" else "white"
                     
-                    out.addRect(pxX, pxY, self.blockSize, self.blockSize, bgColor, 'red', 1)  
-                    # self.writer.addRect(pxX, pxY, self.blockSize, self.blockSize, "none", 'orange', 0.3)
-                    # self.writer.addText(tX, tY, self.blockSize / 2, "red", text)
-                except Exception as e:
+                    out.addRect(pxX, pxY, self.blockSize, self.blockSize, bgColor, 'red', 1)
+
+                except:
                     traceback.print_exc()
                     continue
         
@@ -514,47 +503,32 @@ class ImageParser:
                 x1, y1 = self.blocks[j][i]
                 bit = 1 if not self.isLightRoi(x, y) else 0
                 versionBits = (versionBits << 1) | bit
-                self.writer.addRect(x, y, self.blockSize, self.blockSize, 'blue', 'black', 0.1)
-                self.writer.addRect(x1, y1, self.blockSize, self.blockSize, 'blue', 'black', 0.1)
-                self.invalid.add((i, j))
-                self.invalid.add((j, i))
-                # self.versionInfoCoords.add((i, j))
-                # self.versionInfoCoords.add((j, i))
+                self.writer.addRect(x, y, self.blockSize, self.blockSize, 'green', 'black', 0.1)
+                self.writer.addRect(x1, y1, self.blockSize, self.blockSize, 'green', 'black', 0.1)
+                self.addInvalid(i, j)
+                self.addInvalid(j, i)
         
     def readData(self, i, j):
-        invalid, reason = self.isInvalid(i, j)
-        if invalid:
-            if i == 0 and j == len(self.blocks) - 10 and reason == 'version':
-                newJ = j - 2
-                self.direction = "left"
-                self.goingUp = not self.goingUp
-                return [i, newJ]
-            
-            return
-
-        if j < 0:
+        if self.isInvalid(i, j) or j < 0:            
             return
 
         x, y = self.blocks[i][j]
         info = "0" if self.isLightRoi(x, y) else "1"
-        textColor = "black" if info == "0" else "white"
+        textColor = "black"
         
         if self.getMaskFunction(i, j):
             info = "1" if info == "0" else "0"
         
-        count = len(self.qr) - 12
+        count = len(self.qr)
         idx = count % 8
-        blues = ['blue', 'blue', 'darkslateblue', 'darkslateblue', 'darkcyan', 'darkcyan', 'cyan', 'cyan'][::-1]
-        reds = ['darkred', 'darkred', 'crimson', 'crimson', 'red', 'red', 'orangered', 'orangered'][::-1]
+        blues = ['cyan', 'darkcyan', 'darkslateblue', 'blue']
+        reds = ['orangered', 'red', 'crimson', 'darkred']
 
-        if count < 0:
-            self.color = "none"
-        elif idx == 0:
+        if idx == 0:
             self.color = blues[0] if self.color in reds or self.color == "none" else reds[0]
-            textColor = "black"
         else:
+            idx = idx // 2
             self.color = blues[idx] if self.color in blues else reds[idx]
-            textColor = "black"
 
         self.writer.addRect(x, y, self.blockSize, self.blockSize, self.color, 'yellow', 0.1)
         self.writer.addText(x + (self.blockSize / 4), y + (self.blockSize / 1.3), self.blockSize / 5, textColor, len(self.qr))
@@ -592,7 +566,7 @@ class ImageParser:
 
     def readAndMoveDataBlocks(self, i, j):      
         try:
-            if i < 0 or i >= len(self.blocks) or self.isInvalid(i, j)[1] == 'finder':
+            if i < 0 or i >= len(self.blocks):
                 i1, j1 = self.handleInvalidMovement(i, j)
                 return [i1, j1, True]
             if j < -1:
@@ -626,7 +600,7 @@ class ImageParser:
     def addFindersToInvalid(self):
         for idx in range(8):
             rowIdx = len(self.blocks) - 7
-            self.invalid.add((rowIdx, idx))
+            self.addInvalid(rowIdx, idx)
     
     def getBlockSizes(self):
         key = f"{self.version}-{self.ecl}"

@@ -1,59 +1,96 @@
-# QR Code Reader - Main Module
+# QR Code Reader & Decoder
 
-## Description
-`main.py` is the core module of a QR Code Reader project that analyzes QR code images and generates an SVG visualization with detected patterns highlighted. It identifies timing patterns (in gold) and finder patterns (in blue) to understand the QR code structure and prepares the data for further decoding.
+## Overview
+A Python-based QR code processing system that analyzes images, detects structural patterns, and decodes contained data. Generates visual annotations while supporting numeric, alphanumeric, and binary data extraction.
+
+The following images are based on this QR Code, which has the text 'hello world' embedded within it:
+
+![Test QR Code](https://i.imgur.com/pg5upzB.png)
 
 ## Features
-- Processes QR code images using run-length encoding (RLE) for pattern detection
-- Identifies timing patterns (alternating black/white modules)
-- Locates finder patterns (square markers at corners)
-- Generates SVG output overlays to visualize detected patterns
-- Provides groundwork for QR code data extraction
 
-## Dependencies
-- Python 3.x
-- Required Packages:
-  ```shell
-  Pillow  # For image processing
+- **Pattern Detection**  
+   - Automatically identifies finder patterns (corners), timing patterns (alignment lines), and version/format information.
+
+- **Visual Debugging** - Generates layered SVG outputs showing:
+  - Original QR code
+  - Finder patterns (blue)
+  - Timing patterns (gold)
+  - Decoding path (color-coded)
+  - Format/version info areas
+
+  ![Visualization](https://i.imgur.com/j8d5DeN.png)
+
+- **Data Decoding** - Supports:
+  - Numeric, alphanumeric, and 8-bit byte encoding
+  - Error correction levels (L, M, Q, H)
+  - Versions 1-10+ (auto-detected)
+  - Mask pattern reversal
+  - This is the unmasked QR code:
+  
+  ![Unmasking](https://i.imgur.com/y6f3yzU.png)
+
+- **Intelligent Processing**  
+   - Dynamically calculates block sizes and handles orientation variations.
+
+## Requirements
+
+- Python 3.8+
+- `Pillow` library:
+  ```bash
+  pip install Pillow
   ```
-- Project Modules:
-  - `parse.py` (custom QR parsing logic)
-  - `xmlpy.py` (custom SVG/XML builder)
 
 ## Usage
-Run the script with an input QR image and output SVG path:
-```shell
-python main.py --input [input_image_path] --output [output_svg_path]
+
+1. **Basic Processing**
+   ```bash
+   python main.py --input qr_image.png --output analysis.svg
+   ```
+
+2. **Output Interpretation**
+   - Open the resulting SVG in any modern browser
+   - Gold rectangles = Timing patterns
+   - Blue regions = Finder patterns
+   - Purple/green = Format/version info
+   - Colored blocks = Data decoding sequence
+
+## Sample Workflow
+
+```mermaid
+graph LR
+A[Input Image] --> B[Pattern Detection]
+B --> C[SVG Visualization]
+B --> D[Grid Creation]
+D --> E[Format Decoding]
+E --> F[Data Extraction]
+F --> G[Decoded Output]
 ```
 
-### Example:
-```shell
-python main.py --input qr.png --output analysis.svg
+## Supported QR Specifications
+
+| Feature              | Support Level             |
+|----------------------|---------------------------|
+| Encoding Modes       | Numeric, Alphanumeric, Byte |
+| Error Correction     | L (7%), M (15%), Q (25%), H (30%) |
+| Version Detection    | 1-10+ (Auto-scaled)       |
+| Mask Patterns        | 8 standard types          |
+
+## Limitations
+
+- Static image input only (no camera support)
+- Best results with standard QR codes
+- Currently does not include any error handling
+- Can't adjust the QR Code to its correct orientation
+
+## Development Notes
+
+```bash
+.
+├── main.py            # Entry point & visualization pipeline
+├── parse.py           # Core detection/decoding logic
+└── xmlpy.py           # SVG generation utilities
 ```
 
-## Output
-An SVG file containing:
-1. Original QR code image
-2. Gold rectangles highlighting timing patterns
-3. Blue rectangles marking finder patterns
-4. Transparent overlays for debug visualization
-
-## Key Functionality
-1. **Image Processing**  
-   - Converts input image to RGB format
-   - Uses block-based analysis with adjustable block size
-
-2. **Pattern Detection**  
-   - Run-length encoding (RLE) in both X and Y axes
-   - Timing pattern identification
-   - Finder pattern corner detection (TL, TR, BL positions)
-
-3. **Visualization**  
-   - SVG output with layered annotations
-   - Color-coded pattern overlays
-   - Coordinate system preservation
-
-## Notes
-- Ensure dependent modules (`parse.py`, `xmlpy.py`) are in the same directory
-- Output SVG can be viewed in any modern web browser
-- Designed as part of a larger QR decoding system (format patterns, data extraction)
+## License
+Open-source under MIT License. Commercial use permitted with attribution.

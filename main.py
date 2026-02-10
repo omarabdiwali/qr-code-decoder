@@ -42,7 +42,6 @@ try:
             tX = parser.getClosestMatch(startX, startY, len(tY["data"]), rleX, 'x')
 
     if tX is not None:
-        paddingX = 0
         for idx, item in enumerate(tX["data"]):
             if idx == 0 or idx == len(tX["data"]) - 1:
                 key = "tl" if idx == 0 else "tr"
