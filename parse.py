@@ -509,7 +509,18 @@ class ImageParser:
                 self.addInvalid(j, i)
         
     def readData(self, i, j):
-        if self.isInvalid(i, j) or j < 0:            
+        if self.isInvalid(i, j) or j < 0:
+            if i == 8 and j == 8 and self.goingUp:
+                i1, j1 = i + 1, j - 3
+                self.direction = 'left'
+                self.goingUp = not self.goingUp
+                return [i1, j1] 
+            elif i == len(self.blocks) - 8 and j == 8 and not self.goingUp:
+                i1, j1 = i - 1, j - 3
+                self.direction = 'left'
+                self.goingUp = not self.goingUp
+                return [i1, j1]            
+            
             return
 
         x, y = self.blocks[i][j]

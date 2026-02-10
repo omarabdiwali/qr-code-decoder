@@ -3,7 +3,7 @@
 ## Overview
 A Python-based QR code processing system that analyzes images, detects structural patterns, and decodes contained data. Generates visual annotations while supporting numeric, alphanumeric, and binary data extraction.
 
-The following images are based on this QR Code, which has the text 'hello world' embedded within it:
+The following images are based on this QR code, which has the text 'hello world' embedded within it:
 
 ![Test QR Code](https://i.imgur.com/pg5upzB.png)
 
@@ -19,14 +19,14 @@ The following images are based on this QR Code, which has the text 'hello world'
   - Decoding path (color-coded)
   - Format/version info areas
 
-  ![Visualization](https://i.imgur.com/j8d5DeN.png)
+  ![Visualization](https://i.imgur.com/UupHprM.png)
 
 - **Data Decoding** - Supports:
   - Numeric, alphanumeric, and 8-bit byte encoding
   - Error correction levels (L, M, Q, H)
   - Versions 1-10+ (auto-detected)
   - Mask pattern reversal
-  - This is the unmasked QR code:
+  - This is the unmasked QR data and error correction bits:
   
   ![Unmasking](https://i.imgur.com/y6f3yzU.png)
 
