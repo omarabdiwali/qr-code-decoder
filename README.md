@@ -19,7 +19,7 @@ The following images are based on this QR code, which has the text 'hello world'
   - Decoding path (color-coded)
   - Format/version info areas
 
-  ![Visualization](https://i.imgur.com/UupHprM.png)
+  ![Visualization](https://i.imgur.com/Fp4OSeA.png)
 
 - **Data Decoding** - Supports:
   - Numeric, alphanumeric, and 8-bit byte encoding

@@ -144,6 +144,7 @@ class ImageParser:
                 startIndex = 1 if firstItem["color"] == 0 else 0
                 endIndex = len(items) - 1 if startIndex == 1 else len(items)
                 startLength = 0
+                endLength = 0
                 
                 valid = True
                 tempBlockSize = self.blockSize
@@ -159,25 +160,25 @@ class ImageParser:
                     if i == startIndex:
                         if item["color"] != 1:
                             valid = False
-                            # print("MISS (start):", item)
                             break
                         
                         startLength = item["length"]
                         tempBlockSize = item["length"] / 7
                     
                     elif i == endIndex - 1:
-                        if item["color"] != 1:
+                        if item["color"] != 1 or totalSize < 6 or not self.diff(item['length'], startLength, tempBlockSize):
                             valid = False
-                            # print("MISS:", item)
                             break
+
+                        endLength = item['length']
                     
                     elif self.diff(item["length"], startLength, tempBlockSize):
-                        if totalSize < 6 or item["color"] != 1:
-                            # print("MISS (idk):", item)
+                        if totalCount < 6 or item["color"] != 1:
                             valid = False
                             break
+                        
                         endIndex = i + 1
-                        # print(item)
+                        endLength = item['length']
                         break
                     
                     else:
@@ -186,17 +187,14 @@ class ImageParser:
                             break
                         if not self.diff(item["length"], tempBlockSize, tempBlockSize):
                             valid = False
-                            # print("MISS (size):", item)
                             break
                         else:
                             totalSize += item['length']
                             totalCount += 1
                     
-                    # print(y, item)
                 
-                # print('---------------------------')
-                if valid:
-                    actualBlockSize = totalSize / totalCount
+                if valid and totalSize > 5:
+                    actualBlockSize = (totalSize + endLength + startLength) / (totalCount + 14)
                     timingX = { "y": y, "data": items[startIndex:endIndex] }
                     self.blockSize = actualBlockSize
                     break
@@ -215,6 +213,7 @@ class ImageParser:
                 totalCount = 0
                 totalSize = 0
 
+                endLength = 0
                 startLength = 0
                 
                 if len(items) < 5:
@@ -232,16 +231,19 @@ class ImageParser:
                         tempBlockSize = tempBlockSize if tempBlockSize is not None else startLength / 7
                     
                     elif i == endIndex - 1:
-                        if item["color"] != 1 or totalSize < 6:
+                        if item["color"] != 1 or totalSize < 6 or not self.diff(item['length'], startLength, tempBlockSize):
                             valid = False
                             break
+
+                        endLength = item['length']
                     
                     elif self.diff(item["length"], startLength, tempBlockSize):
-                        if totalSize < 6 or item["color"] != 1:
-                            # print("MISS (idk):", item)
+                        if totalCount < 6 or item["color"] != 1:
                             valid = False
                             break
+
                         endIndex = i + 1
+                        endLength = item['length']
                         break
                     
                     else:
@@ -255,11 +257,9 @@ class ImageParser:
                             totalSize += item["length"]
                             totalCount += 1
                     
-                    # print(item)
                 
-                # print('---------------------------------------------')
-                if valid:
-                    yBlockSize = totalSize / totalCount
+                if valid and totalCount > 5:
+                    yBlockSize = (totalSize + startLength + endLength) / (totalCount + 14)
                     self.blockSize = (self.blockSize + yBlockSize) / 2 if self.blockSize is not None else yBlockSize
                     timingY = { "x": x, "data": items[startIndex:endIndex] }
                     break
@@ -289,10 +289,6 @@ class ImageParser:
         
         if currentClosest is None:
             return None
-        
-        # print(currentInfo[currentStartIndex])
-        # print("target: {},{} - found: {},{}".format(moving, constant, currentInfo[currentStartIndex]['start'], currentOtherIndex))
-        # print(currentStartIndex, expectedLength)
         
         currentInfo = currentInfo[currentStartIndex:currentStartIndex + expectedLength]
         if self.diff(currentInfo[0]['length'], currentInfo[-1]['length'], self.blockSize):
@@ -435,31 +431,31 @@ class ImageParser:
                     break
             
             if invalid:
-                print("invalid?", i)
-                del self.blocks[-1]
+                print("Deleted first row" if i == 0 else "Deleted last row")
+                del self.blocks[i]
         
         invalidFirstCol = False
         invalidLastCol = False
 
         for row in self.blocks[:7]:
-            for x, y in row:
-                if self.isLightRoi(x, y):
-                    invalidFirstCol = True
+            x, y = row[0]
+            invalidFirstCol = self.isLightRoi(x, y)
+            if invalidFirstCol:
                 break
         
         if invalidFirstCol:
-            print("invalid? 0")
+            print("Deleted first column")
             for row in self.blocks:
                 del row[0]
         
         for row in self.blocks[:7]:
-            for x, y in row[::-1]:
-                if self.isLightRoi(x, y):
-                    invalidLastCol = True
+            x, y = row[-1]
+            invalidLastCol = self.isLightRoi(x, y)
+            if invalidLastCol:
                 break
         
         if invalidLastCol:
-            print("invalid? -1")
+            print("Deleted last column")
             for row in self.blocks:
                 del row[-1]
 
@@ -503,8 +499,8 @@ class ImageParser:
                 x1, y1 = self.blocks[j][i]
                 bit = 1 if not self.isLightRoi(x, y) else 0
                 versionBits = (versionBits << 1) | bit
-                self.writer.addRect(x, y, self.blockSize, self.blockSize, 'green', 'black', 0.1)
-                self.writer.addRect(x1, y1, self.blockSize, self.blockSize, 'green', 'black', 0.1)
+                self.writer.addRect(x, y, self.blockSize, self.blockSize, 'none', 'orange', 0.5)
+                self.writer.addRect(x1, y1, self.blockSize, self.blockSize, 'none', 'orange', 0.5)
                 self.addInvalid(i, j)
                 self.addInvalid(j, i)
         
@@ -532,16 +528,11 @@ class ImageParser:
         
         count = len(self.qr)
         idx = count % 8
-        blues = ['cyan', 'darkcyan', 'darkslateblue', 'blue']
-        reds = ['orangered', 'red', 'crimson', 'darkred']
 
         if idx == 0:
-            self.color = blues[0] if self.color in reds or self.color == "none" else reds[0]
-        else:
-            idx = idx // 2
-            self.color = blues[idx] if self.color in blues else reds[idx]
+            self.color = 'cyan' if self.color == 'red' or self.color == "none" else 'red'
 
-        self.writer.addRect(x, y, self.blockSize, self.blockSize, self.color, 'yellow', 0.1)
+        self.writer.addRect(x, y, self.blockSize, self.blockSize, self.color, 'yellow', 0.1, 0.6)
         self.writer.addText(x + (self.blockSize / 4), y + (self.blockSize / 1.3), self.blockSize / 5, textColor, len(self.qr))
         self.qr.append(info)
     
@@ -613,7 +604,7 @@ class ImageParser:
             rowIdx = len(self.blocks) - 7
             self.addInvalid(rowIdx, idx)
     
-    def getBlockSizes(self):
+    def getDataBlockSizes(self):
         key = f"{self.version}-{self.ecl}"
         struct = self.qrDataBlocks.get(key, [])
         blockSizes = []
@@ -648,7 +639,7 @@ class ImageParser:
         return finalBits
 
     def decodeData(self):
-        blockSizes, changeIndex = self.getBlockSizes()
+        blockSizes, changeIndex = self.getDataBlockSizes()
         bitstring = self.decodeInterleaved(blockSizes, changeIndex)
         encoding = int(bitstring[:4], 2)
         startIndex = 4
@@ -667,6 +658,7 @@ class ImageParser:
                     startIndex += 14
                 
                 data = []
+                print("Encoding: Numeric")
                 print("Length:", length)
                 print("Version:", self.version)
                 
@@ -692,6 +684,7 @@ class ImageParser:
                     startIndex += 13
                 
                 data = []
+                print("Encoding: Alphanumeric")
                 print("Length:", length)
                 print("Version:", self.version)
 
@@ -720,6 +713,7 @@ class ImageParser:
                     startIndex += 16                
                 
                 data = bytearray()
+                print("Encoding: Byte")
                 print("Length:", length)
                 print("Version:", self.version)
                 
