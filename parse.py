@@ -166,7 +166,7 @@ class ImageParser:
                         tempBlockSize = item["length"] / 7
                     
                     elif i == endIndex - 1:
-                        if item["color"] != 1 or totalSize < 6 or not self.diff(item['length'], startLength, tempBlockSize):
+                        if item["color"] != 1 or totalCount < 6 or not self.diff(item['length'], startLength, tempBlockSize):
                             valid = False
                             break
 
@@ -193,7 +193,7 @@ class ImageParser:
                             totalCount += 1
                     
                 
-                if valid and totalSize > 5:
+                if valid and totalCount > 5:
                     actualBlockSize = (totalSize + endLength + startLength) / (totalCount + 14)
                     timingX = { "y": y, "data": items[startIndex:endIndex] }
                     self.blockSize = actualBlockSize
@@ -231,7 +231,7 @@ class ImageParser:
                         tempBlockSize = tempBlockSize if tempBlockSize is not None else startLength / 7
                     
                     elif i == endIndex - 1:
-                        if item["color"] != 1 or totalSize < 6 or not self.diff(item['length'], startLength, tempBlockSize):
+                        if item["color"] != 1 or totalCount < 6 or not self.diff(item['length'], startLength, tempBlockSize):
                             valid = False
                             break
 

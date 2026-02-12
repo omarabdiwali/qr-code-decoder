@@ -12,7 +12,7 @@ class XMLBuilder:
     def addCircle(self, cx, cy, r, fill):
         self.file.write(f'  <circle cx="{cx}" cy="{cy}" r="{r}" fill="{fill}" />\n')
     def addRect(self, x, y, width, height, fill, stroke, strokeWidth, opacity=1.0):
-        self.file.write(f'  <rect x="{x}" y="{y}" width="{width}" height="{height}" fill="{fill}" stroke="{stroke}" stroke-width="{strokeWidth}" opacity="{opacity}" />\n')
+        self.file.write(f'  <rect x="{x}" y="{y}" width="{width}" height="{height}" fill="{fill}" stroke="{stroke}" stroke-width="{strokeWidth}" fill-opacity="{opacity}" />\n')
     def addText(self, x, y, fontSize, fill, text):
         self.file.write(f'  <text x="{x}" y="{y}" font-size="{fontSize}" fill="{fill}">{text}</text>\n')
     def closeNode(self, node):
