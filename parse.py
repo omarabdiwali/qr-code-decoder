@@ -3,11 +3,11 @@ import traceback
 from collections import defaultdict
 
 class ImageParser:
-    def __init__(self, data, width, height, writer):
+    def __init__(self, data, width, height, path):
         self.data = data
         self.width = width
         self.height = height
-        self.writer = writer
+        self.writer = xmlpy.XMLBuilder(path)
         self.ecl = 1
         self.blockSize, self.startX, self.endX, self.startY, self.endY = [None for _ in range(5)]
         self.timingCoords, self.finderCoords, self.mask = None, {}, None
@@ -70,8 +70,8 @@ class ImageParser:
         ]
     
     def getColorValue(self, val):
-        totalValue = sum(val) / 2
-        return int(totalValue < 190)
+        # totalValue = sum(val) / 2
+        return int(val < 125)
 
     def diff(self, a, b, threshold):
         return abs(a - b) < threshold
@@ -133,141 +133,79 @@ class ImageParser:
         
         return encoded  
 
-    def findTimingPatterns(self, xData, yData):
-        timingX = None
-        timingY = None
+    def findTimingPatterns(self, data, otherAxis, prevCount=None):
+        validTiming = None
+        lowestDiff = 100
         
-        for obj in xData:
-            for y, value in obj.items():
+        for obj in data:
+            for otherVal, value in obj.items():
                 items = value["data"]
-                firstItem = items[0]
-                startIndex = 1 if firstItem["color"] == 0 else 0
-                endIndex = len(items) - 1 if startIndex == 1 else len(items)
-                startLength = 0
-                endLength = 0
-                
-                valid = True
-                tempBlockSize = self.blockSize
-                totalSize = 0
-                totalCount = 0
-                
-                if len(items) < 5:
-                    continue
-                                    
-                for i in range(startIndex, endIndex):
-                    item = items[i]
+                startIndex = 0
+                while startIndex < len(items) - 7:
+                    totalCount = 0
+                    totalSize = 0
+                    curDiff = 0
+                    startLength = 0
+                    endLength = 0
                     
-                    if i == startIndex:
-                        if item["color"] != 1:
-                            valid = False
-                            break
-                        
-                        startLength = item["length"]
-                        tempBlockSize = item["length"] / 7
-                    
-                    elif i == endIndex - 1:
-                        if item["color"] != 1 or totalCount < 6 or not self.diff(item['length'], startLength, tempBlockSize):
-                            valid = False
-                            break
+                    currentIndex = startIndex
+                    valid = True
+                    tempBlockSize = self.blockSize
 
-                        endLength = item['length']
-                    
-                    elif self.diff(item["length"], startLength, tempBlockSize):
-                        if totalCount < 6 or item["color"] != 1:
-                            valid = False
+                    while currentIndex < len(items):
+                        item = items[currentIndex]
+                        if currentIndex == startIndex:
+                            if item['color'] != 1:
+                                valid = False
+                                break
+                            
+                            startLength = item['length']
+                            tempBlockSize = startLength / 7
+                        
+                        elif currentIndex == len(items) - 1:
+                            if item['color'] != 1 or totalCount < 6 or not self.diff(item['length'], startLength, tempBlockSize):
+                                valid = False
+                                break
+
+                            endLength = item['length']
+                            curDiff += abs(endLength - startLength)
                             break
                         
-                        endIndex = i + 1
-                        endLength = item['length']
-                        break
-                    
-                    else:
-                        if item["length"] > startLength:
-                            valid = False
+                        elif self.diff(item["length"], startLength, tempBlockSize):
+                            if totalCount < 6 or item['color'] != 1:
+                                valid = False
+                                break
+
+                            endLength = item['length']
+                            curDiff += abs(endLength - startLength)
                             break
-                        if not self.diff(item["length"], tempBlockSize, tempBlockSize):
-                            valid = False
-                            break
+                        
                         else:
-                            totalSize += item['length']
-                            totalCount += 1
-                    
-                
-                if valid and totalCount > 5:
-                    actualBlockSize = (totalSize + endLength + startLength) / (totalCount + 14)
-                    timingX = { "y": y, "data": items[startIndex:endIndex] }
-                    self.blockSize = actualBlockSize
-                    break
-        
-            if timingX is not None:
-                break
-
-        for obj in yData:
-            for x, value in obj.items():
-                items = value["data"]
-                firstItem = items[0]
-                startIndex = 1 if firstItem["color"] == 0 else 0
-                endIndex = len(items) - 1 if startIndex == 1 else len(items)
-                valid = True
-                tempBlockSize = self.blockSize
-                totalCount = 0
-                totalSize = 0
-
-                endLength = 0
-                startLength = 0
-                
-                if len(items) < 5:
-                    continue
-                                    
-                for i in range(startIndex, endIndex):
-                    item = items[i]
-                    
-                    if i == startIndex:
-                        if item["color"] != 1:
-                            valid = False
-                            break
+                            if item['length'] >= startLength:
+                                valid = False
+                                break
+                            if not self.diff(item["length"], tempBlockSize, tempBlockSize):
+                                valid = False
+                                break
+                            else:
+                                totalSize += item["length"]
+                                totalCount += 1
+                                curDiff += abs(item['length'] - tempBlockSize)
                         
-                        startLength = item['length']
-                        tempBlockSize = tempBlockSize if tempBlockSize is not None else startLength / 7
+                        currentIndex += 1
                     
-                    elif i == endIndex - 1:
-                        if item["color"] != 1 or totalCount < 6 or not self.diff(item['length'], startLength, tempBlockSize):
-                            valid = False
-                            break
+                    if valid and totalCount > 6:
+                        xBlockSize = (totalSize + startLength + endLength) / (totalCount + 14)
+                        struct = { otherAxis: otherVal, 'data': items[startIndex:currentIndex+1], 'blockSize': xBlockSize }
+                        if abs(curDiff - lowestDiff) > 1.8 and curDiff < lowestDiff:
+                            if prevCount is None or abs(prevCount - len(struct['data'])) < 2:
+                                # print("Prev:", lowestDiff, "Current:", curDiff)
+                                validTiming = struct
+                                lowestDiff = curDiff
+                    
+                    startIndex += 1
 
-                        endLength = item['length']
-                    
-                    elif self.diff(item["length"], startLength, tempBlockSize):
-                        if totalCount < 6 or item["color"] != 1:
-                            valid = False
-                            break
-
-                        endIndex = i + 1
-                        endLength = item['length']
-                        break
-                    
-                    else:
-                        if item["length"] > startLength:
-                            valid = False
-                            break
-                        if not self.diff(item["length"], tempBlockSize, tempBlockSize):
-                            valid = False
-                            break
-                        else:
-                            totalSize += item["length"]
-                            totalCount += 1
-                    
-                
-                if valid and totalCount > 5:
-                    yBlockSize = (totalSize + startLength + endLength) / (totalCount + 14)
-                    self.blockSize = (self.blockSize + yBlockSize) / 2 if self.blockSize is not None else yBlockSize
-                    timingY = { "x": x, "data": items[startIndex:endIndex] }
-                    break
-
-            if timingY is not None:
-                break
-        
-        return [timingX, timingY]
+        return validTiming
 
     def getClosestMatch(self, moving, constant, expectedLength, data, direction):
         currentClosest = None
@@ -662,14 +600,16 @@ class ImageParser:
                 print("Length:", length)
                 print("Version:", self.version)
                 
-                for _ in range(0, length, 3):
-                    digits = bitstring[startIndex:startIndex + 10]
-                    byte = str(int(digits, 2))
+                for i in range(0, length, 3):
+                    remLength = min(length - i, 3)
+                    changes = { 3: 10, 2: 7, 1: 4 }
+                    digits = bitstring[startIndex:startIndex + changes[remLength]]
+                    byte = str(int(digits, 2)).rjust(remLength, "0")
                     data.append(byte)
-                    startIndex += 10
+                    startIndex += changes[remLength]
                 
                 result = "".join(data)
-                print(result)
+                print("\nResult:", result)
             
             case 2:
                 length = 0
@@ -688,21 +628,30 @@ class ImageParser:
                 print("Length:", length)
                 print("Version:", self.version)
 
-                for _ in range(0, length, 2):
-                    alnum = bitstring[startIndex:startIndex + 11]
-                    deci = int(alnum, 2)
-                    firstCharIdx, secondCharIdx = deci // 45, deci % 45
-                    
-                    if firstCharIdx < len(self.alnumMap):
-                        data.append(self.alnumMap[firstCharIdx])
+                for i in range(0, length, 2):
+                    remLength = min(length - i, 2)
+                    if remLength == 2:
+                        bits = bitstring[startIndex:startIndex + 11]
+                        deci = int(bits, 2)
+                        firstCharIdx, secondCharIdx = deci // 45, deci % 45
+                        
+                        if firstCharIdx < len(self.alnumMap):
+                            data.append(self.alnumMap[firstCharIdx])
+                        else:
+                            print("Invalid:", firstCharIdx)
+                        
+                        data.append(self.alnumMap[secondCharIdx])
+                        startIndex += 11
                     else:
-                        print("Invalid:", firstCharIdx)
-                    
-                    data.append(self.alnumMap[secondCharIdx])
-                    startIndex += 11
+                        bits = bitstring[startIndex : startIndex + 6]
+                        val = int(bits, 2)
+                        if val < len(self.alnumMap):
+                            data.append(self.alnumMap[val])
+                        
+                        startIndex += 6
                 
                 result = "".join(data)
-                print(result)
+                print("\nResult:", result)
 
             case 4:
                 length = int(bitstring[startIndex:startIndex + 8], 2)
@@ -726,7 +675,7 @@ class ImageParser:
                     startIndex += 8
                 
                 result = data.decode('utf-8', errors='replace')
-                print(result)
+                print("\nResult:", result)
             case _:
-                print("Unimplemented encoding type:", encoding)
+                raise Exception(f"Unimplemented encoding type: {encoding}")
     
