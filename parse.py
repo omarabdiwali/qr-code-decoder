@@ -239,7 +239,7 @@ class ImageParser:
         res = self.findTimingPatterns([rowData] if direction == 'x' else [], [rowData] if direction == 'y' else [])
         return res[0] if direction == 'x' else res[1]
 
-    def findFormatPatterns(self):
+    def findAlignmentPatterns(self):
         for i in range(0, len(self.blocks) - 5):
             for j in range(0, len(self.blocks[i]) - 5):
                 if (i, j) in self.invalid:
@@ -308,7 +308,7 @@ class ImageParser:
         maskPattern = int(unmaskedFormat[2:5], 2)
         self.ecl = self.eclMap[errorCorrectionLevel]
         self.mask = maskPattern
-        print("ECL: {}, Mask Pattern: {}".format(self.ecl, self.mask))
+        print("\nECL: {}, Mask Pattern: {}".format(self.ecl, self.mask))
 
         self.readVersion()
 
@@ -334,7 +334,6 @@ class ImageParser:
         self.fixPerimeter()
 
     def isInvalid(self, i, j):
-        # [TL, BR]
         if (i, j) in self.invalid:
             return True
 
@@ -537,11 +536,6 @@ class ImageParser:
             case 7: return ((x + y) % 2 + (x * y) % 3) % 2 == 0
             case _: return False
     
-    def addFindersToInvalid(self):
-        for idx in range(8):
-            rowIdx = len(self.blocks) - 7
-            self.addInvalid(rowIdx, idx)
-    
     def getDataBlockSizes(self):
         key = f"{self.version}-{self.ecl}"
         struct = self.qrDataBlocks.get(key, [])
@@ -557,6 +551,7 @@ class ImageParser:
         return [blockSizes, changeIndex]
     
     def decodeInterleaved(self, blockSizes, changeIndex):
+        assert len(blockSizes) > 0
         errorBlocks = len(blockSizes)
         totalData = sum(blockSizes)
         bitstring = "".join(self.qr)

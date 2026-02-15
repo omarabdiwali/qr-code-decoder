@@ -48,7 +48,7 @@ def readQRCode(filter):
                     br = (item["start"] + item["length"], tX["y"] + parser.blockSize)
                     timingBox["x"].append(br)
             
-            parser.writer.addRect(item["start"], tX["y"], item["length"], parser.blockSize, "none", "gold", 0.6)
+            parser.writer.addRect(item["start"], tX["y"], item["length"], parser.blockSize, "none", "gold", 0.4)
         
         for idx, item in enumerate(tY["data"]):
             if idx == len(tY["data"]) - 1:
@@ -60,7 +60,7 @@ def readQRCode(filter):
                 tl = (tY["x"], item["start"])
                 timingBox["y"].append(tl)
         
-            parser.writer.addRect(tY["x"], item["start"], parser.blockSize, item["length"], "none", "gold", 0.3)
+            parser.writer.addRect(tY["x"], item["start"], parser.blockSize, item["length"], "none", "gold", 0.4)
 
         timingList = list(timingBox.values())
         findersPos = {}
@@ -96,7 +96,7 @@ def readQRCode(filter):
         parser.timingCoords = timingList
         parser.finderCoords = findersPos
         parser.createBlocks()
-        parser.findFormatPatterns()
+        parser.findAlignmentPatterns()
         parser.readFormatVersionInfo()
         parser.traverseBlocks()
 
