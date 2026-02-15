@@ -308,17 +308,16 @@ class ImageParser:
         maskPattern = int(unmaskedFormat[2:5], 2)
         self.ecl = self.eclMap[errorCorrectionLevel]
         self.mask = maskPattern
-        print("\nECL: {}, Mask Pattern: {}".format(self.ecl, self.mask))
-
         self.readVersion()
+        
+        print("\nECL: {}\nVersion: {}\nMask Pattern: {}\n".format(self.ecl, self.version, self.mask))
 
     def addInvalid(self, x, y):
         self.invalid.add((x, y))
 
     def createBlocks(self):
         if self.startX is None or self.startY is None or self.endX is None or self.endY is None or self.blockSize is None:
-            print("Needed values are None!")
-            return
+            raise Exception("Needed values for createBlocks are None!")
         
         y = self.startY
         while y < self.endY:
@@ -503,7 +502,7 @@ class ImageParser:
             self.direction = 'left'
             return [i1, j1]            
 
-    def readAndMoveDataBlocks(self, i, j):      
+    def iterateDataBlocks(self, i, j):      
         try:
             if i < 0 or i >= len(self.blocks):
                 i1, j1 = self.handleInvalidMovement(i, j)
@@ -520,7 +519,7 @@ class ImageParser:
     def readDataBlocks(self, i, j):
         run = True
         while run:
-            i, j, run = self.readAndMoveDataBlocks(i, j)
+            i, j, run = self.iterateDataBlocks(i, j)
 
         self.decodeData()
 
@@ -574,103 +573,142 @@ class ImageParser:
     def decodeData(self):
         blockSizes, changeIndex = self.getDataBlockSizes()
         bitstring = self.decodeInterleaved(blockSizes, changeIndex)
-        encoding = int(bitstring[:4], 2)
-        startIndex = 4
-        
-        match encoding:
-            case 1:
-                length = 0
-                if self.version < 10:
-                    length = int(bitstring[startIndex:startIndex + 10], 2)
-                    startIndex += 10
-                elif self.version < 27:
-                    length = int(bitstring[startIndex:startIndex + 12], 2)
-                    startIndex += 12
-                else:
-                    length = int(bitstring[startIndex:startIndex + 14], 2)
-                    startIndex += 14
-                
-                data = []
-                print("Encoding: Numeric")
-                print("Length:", length)
-                print("Version:", self.version)
-                
-                for i in range(0, length, 3):
-                    remLength = min(length - i, 3)
-                    changes = { 3: 10, 2: 7, 1: 4 }
-                    digits = bitstring[startIndex:startIndex + changes[remLength]]
-                    byte = str(int(digits, 2)).rjust(remLength, "0")
-                    data.append(byte)
-                    startIndex += changes[remLength]
-                
-                result = "".join(data)
-                print("\nResult:", result)
-            
-            case 2:
-                length = 0
-                if self.version < 10:
-                    length = int(bitstring[startIndex:startIndex + 9], 2)
-                    startIndex += 9
-                elif self.version < 27:
-                    length = int(bitstring[startIndex:startIndex + 11], 2)
-                    startIndex += 11
-                else:
-                    length = int(bitstring[startIndex:startIndex + 13], 2)
-                    startIndex += 13
-                
-                data = []
-                print("Encoding: Alphanumeric")
-                print("Length:", length)
-                print("Version:", self.version)
+        startIndex = 0
+        result = ""
 
-                for i in range(0, length, 2):
-                    remLength = min(length - i, 2)
-                    if remLength == 2:
-                        bits = bitstring[startIndex:startIndex + 11]
-                        deci = int(bits, 2)
-                        firstCharIdx, secondCharIdx = deci // 45, deci % 45
-                        
-                        if firstCharIdx < len(self.alnumMap):
-                            data.append(self.alnumMap[firstCharIdx])
-                        else:
-                            print("Invalid:", firstCharIdx)
-                        
-                        data.append(self.alnumMap[secondCharIdx])
+        while startIndex < len(bitstring) - 4:
+            encoding = int(bitstring[startIndex : startIndex + 4], 2)
+            startIndex += 4
+            
+            if encoding == 0:
+                break
+        
+            match encoding:
+                case 1:
+                    length = 0
+                    if self.version < 10:
+                        length = int(bitstring[startIndex:startIndex + 10], 2)
+                        startIndex += 10
+                    elif self.version < 27:
+                        length = int(bitstring[startIndex:startIndex + 12], 2)
+                        startIndex += 12
+                    else:
+                        length = int(bitstring[startIndex:startIndex + 14], 2)
+                        startIndex += 14
+                    
+                    data = []
+                    print(f"Encoding: Numeric - Length: {length}")
+                    
+                    for i in range(0, length, 3):
+                        remLength = min(length - i, 3)
+                        changes = { 3: 10, 2: 7, 1: 4 }
+                        digits = bitstring[startIndex:startIndex + changes[remLength]]
+                        byte = str(int(digits, 2)).rjust(remLength, "0")
+                        data.append(byte)
+                        startIndex += changes[remLength]
+                    
+                    result += "".join(data)
+                
+                case 2:
+                    length = 0
+                    if self.version < 10:
+                        length = int(bitstring[startIndex:startIndex + 9], 2)
+                        startIndex += 9
+                    elif self.version < 27:
+                        length = int(bitstring[startIndex:startIndex + 11], 2)
                         startIndex += 11
                     else:
-                        bits = bitstring[startIndex : startIndex + 6]
-                        val = int(bits, 2)
-                        if val < len(self.alnumMap):
-                            data.append(self.alnumMap[val])
-                        
-                        startIndex += 6
-                
-                result = "".join(data)
-                print("\nResult:", result)
-
-            case 4:
-                length = int(bitstring[startIndex:startIndex + 8], 2)
-                if self.version < 10:
-                    startIndex += 8
-                else:
-                    length = int(bitstring[startIndex:startIndex+16], 2)
-                    startIndex += 16                
-                
-                data = bytearray()
-                print("Encoding: Byte")
-                print("Length:", length)
-                print("Version:", self.version)
-                
-                for _ in range(length):
-                    char = bitstring[startIndex:startIndex+8]
-                    if char:
-                        byte = int(char, 2)
-                        data.append(byte)
+                        length = int(bitstring[startIndex:startIndex + 13], 2)
+                        startIndex += 13
                     
-                    startIndex += 8
+                    data = []
+                    print(f"Encoding: Alphanumeric - Length: {length}")
+
+                    for i in range(0, length, 2):
+                        remLength = min(length - i, 2)
+                        if remLength == 2:
+                            bits = bitstring[startIndex:startIndex + 11]
+                            deci = int(bits, 2)
+                            firstCharIdx, secondCharIdx = deci // 45, deci % 45
+                            
+                            if firstCharIdx < len(self.alnumMap):
+                                data.append(self.alnumMap[firstCharIdx])
+                            else:
+                                print("Invalid:", firstCharIdx)
+                            
+                            data.append(self.alnumMap[secondCharIdx])
+                            startIndex += 11
+                        else:
+                            bits = bitstring[startIndex : startIndex + 6]
+                            val = int(bits, 2)
+                            if val < len(self.alnumMap):
+                                data.append(self.alnumMap[val])
+                            
+                            startIndex += 6
+                    
+                    result += "".join(data)
+
+                case 4:
+                    length = 0
+                    if self.version < 10:
+                        length = int(bitstring[startIndex:startIndex + 8], 2)
+                        startIndex += 8
+                    else:
+                        length = int(bitstring[startIndex:startIndex + 16], 2)
+                        startIndex += 16                
+                    
+                    data = bytearray()
+                    print(f"Encoding: Byte - Length: {length}")
+                    
+                    for _ in range(length):
+                        char = bitstring[startIndex:startIndex+8]
+                        if char:
+                            byte = int(char, 2)
+                            data.append(byte)
+                        
+                        startIndex += 8
+                    
+                    result += data.decode('utf-8', errors='replace')
                 
-                result = data.decode('utf-8', errors='replace')
-                print("\nResult:", result)
-            case _:
-                raise Exception(f"Unimplemented encoding type: {encoding}")
-    
+                case 8:
+                    length = 0
+                    if self.version < 10:
+                        length = int(bitstring[startIndex:startIndex + 8], 2)
+                        startIndex += 8
+                    elif self.version < 27:
+                        length = int(bitstring[startIndex:startIndex + 10], 2)
+                        startIndex += 10
+                    else:
+                        length = int(bitstring[startIndex:startIndex + 12], 2)
+                        startIndex += 12
+                    
+                    data = bytearray()
+                    print(f"Encoding: Kanji - Length: {length}")
+
+                    for _ in range(length):
+                        char = bitstring[startIndex : startIndex + 13]
+                        val = int(char, 2)
+
+                        high = val // 0xC0
+                        low = val % 0xC0
+                        res = (high << 8) | low
+
+                        if res <= 0x1E00:
+                            res += 0x8140
+                        else:
+                            res += 0xC140
+                        
+                        h = (res >> 8) & 0xFF
+                        l = res & 0xFF
+                        
+                        data.extend(bytes([h, l]))
+                        startIndex += 13
+                    
+                    result += data.decode('shift_jis', errors='replace')
+                    
+                case _:
+                    if result:
+                        print(f"\nCurrent Result:{result}")
+                    raise Exception(f"Unimplemented encoding type: {encoding}")
+
+        print(f"\n{result}")
