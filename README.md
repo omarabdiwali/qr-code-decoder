@@ -1,7 +1,7 @@
 # QR Code Reader & Decoder
 
 ## Overview
-A Python-based QR code processing system that analyzes images, detects structural patterns, and decodes contained data. Generates visual annotations while supporting numeric, alphanumeric, and binary data extraction.
+A Python-based QR code processing system that analyzes images, detects structural patterns, and decodes contained data. Generates visual annotations while supporting numeric, alphanumeric, kanji, and binary data extraction.
 
 The following images are based on this QR code, which has the text 'hello world' embedded within it:
 
@@ -14,7 +14,6 @@ The following images are based on this QR code, which has the text 'hello world'
 
 - **Visual Debugging** - Generates layered SVG outputs showing:
   - Original QR code
-  - Finder patterns (blue)
   - Timing patterns (gold)
   - Decoding path (color-coded)
   - Format/version info areas
@@ -22,9 +21,9 @@ The following images are based on this QR code, which has the text 'hello world'
   ![Visualization](https://i.imgur.com/Fp4OSeA.png)
 
 - **Data Decoding** - Supports:
-  - Numeric, alphanumeric, and 8-bit byte encoding
+  - Numeric, alphanumeric, kanji, and 8-bit byte encoding
   - Error correction levels (L, M, Q, H)
-  - Versions 1-10+ (auto-detected)
+  - Versions 1-40 (auto-detected)
   - Mask pattern reversal
   - This is the unmasked QR data and error correction bits:
   
@@ -37,6 +36,7 @@ The following images are based on this QR code, which has the text 'hello world'
 
 - Python 3.8+
 - `Pillow` library:
+
   ```bash
   pip install Pillow
   ```
@@ -51,8 +51,8 @@ The following images are based on this QR code, which has the text 'hello world'
 2. **Output Interpretation**
    - Open the resulting SVG in any modern browser
    - Gold rectangles = Timing patterns
-   - Blue regions = Finder patterns
-   - Purple/green = Format/version info
+   - Purple/Green rectangles = Format info
+   - Orange rectangles = Alignment patterns
    - Colored blocks = Data decoding sequence
 
 ## Sample Workflow
@@ -71,9 +71,9 @@ F --> G[Decoded Output]
 
 | Feature              | Support Level             |
 |----------------------|---------------------------|
-| Encoding Modes       | Numeric, Alphanumeric, Byte |
+| Encoding Modes       | Numeric, Alphanumeric, Byte, Kanji |
 | Error Correction     | L (7%), M (15%), Q (25%), H (30%) |
-| Version Detection    | 1-10+ (Auto-scaled)       |
+| Version Detection    | 1-40 (Auto-scaled)       |
 | Mask Patterns        | 8 standard types          |
 
 ## Limitations
