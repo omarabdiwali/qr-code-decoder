@@ -207,38 +207,6 @@ class ImageParser:
 
         return validTiming
 
-    def getClosestMatch(self, moving, constant, expectedLength, data, direction):
-        currentClosest = None
-        currentInfo = []
-        currentStartIndex = []
-        currentOtherIndex = None
-
-        for obj in data:
-            for i, value in obj.items():
-                for idx, item in enumerate(value['data']):
-                    diff = abs(item["start"] - moving) + abs(i - constant)
-                    if currentClosest is None or diff < currentClosest:
-                        currentClosest = diff
-                        currentStartIndex = idx
-                        currentOtherIndex = i
-                    
-                    if i == round(currentOtherIndex + self.blockSize / 2):
-                        currentInfo = value['data']
-        
-        if currentClosest is None:
-            return None
-        
-        currentInfo = currentInfo[currentStartIndex:currentStartIndex + expectedLength]
-        if self.diff(currentInfo[0]['length'], currentInfo[-1]['length'], self.blockSize):
-            currentInfo[-1]['length'] = currentInfo[0]['length']
-        
-        dataFormat = { currentOtherIndex: { 'data': currentInfo } }
-        return self.checkTimingPatternRow(dataFormat, direction)
-
-    def checkTimingPatternRow(self, rowData, direction="x"):
-        res = self.findTimingPatterns([rowData] if direction == 'x' else [], [rowData] if direction == 'y' else [])
-        return res[0] if direction == 'x' else res[1]
-
     def findAlignmentPatterns(self):
         for i in range(0, len(self.blocks) - 5):
             for j in range(0, len(self.blocks[i]) - 5):
@@ -428,13 +396,10 @@ class ImageParser:
         if calcVersion < 7:
             return
 
-        versionBits = 0
         for j in range(6):
             for i in range(size - 11, size - 8):
                 x, y = self.blocks[i][j]
                 x1, y1 = self.blocks[j][i]
-                bit = 1 if not self.isLightRoi(x, y) else 0
-                versionBits = (versionBits << 1) | bit
                 self.writer.addRect(x, y, self.blockSize, self.blockSize, 'none', 'orange', 0.5)
                 self.writer.addRect(x1, y1, self.blockSize, self.blockSize, 'none', 'orange', 0.5)
                 self.addInvalid(i, j)
@@ -480,27 +445,21 @@ class ImageParser:
         return [i1, j1]
 
     def makeMovement(self, i, j):
+        resp = self.readData(i, j)
+        if resp:
+            return resp
+        
         if self.direction == 'left':
-            resp = self.readData(i, j)
-            if resp:
-                return resp
             i1, j1 = i, j - 1
             self.direction = 'up' if self.goingUp else 'down'
-            return [i1, j1]
         elif self.direction == 'up':
-            resp = self.readData(i, j)
-            if resp:
-                return resp
             i1, j1 = i - 1, j + 1
             self.direction = 'left'
-            return [i1, j1]
         else:
-            resp = self.readData(i, j)
-            if resp:
-                return resp
             i1, j1 = i + 1, j + 1
             self.direction = 'left'
-            return [i1, j1]            
+
+        return [i1, j1]
 
     def iterateDataBlocks(self, i, j):      
         try:
