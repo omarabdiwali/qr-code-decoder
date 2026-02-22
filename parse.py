@@ -1,6 +1,7 @@
 import xmlpy
-import traceback
+from traceback import print_exc
 from collections import defaultdict
+from math import ceil
 
 class ImageParser:
     def __init__(self, data, width, height, path):
@@ -69,8 +70,12 @@ class ImageParser:
             '+', '-', '.', '/', ':'
         ]
     
+    def updateParserValues(self, image):
+        self.data = image.load()
+        self.width = image.width
+        self.height = image.height
+
     def getColorValue(self, val):
-        # totalValue = sum(val) / 2
         return int(val < 125)
 
     def diff(self, a, b, threshold):
@@ -133,9 +138,9 @@ class ImageParser:
         
         return encoded  
 
-    def findTimingPatterns(self, data, otherAxis, prevCount=None):
-        validTiming = None
-        lowestDiff = 100
+    def findTimingPatterns(self, data, otherAxis, otherTimingPattern=None):
+        timingPatterns = {}
+        rowsParsed = {}
         
         for obj in data:
             for otherVal, value in obj.items():
@@ -196,16 +201,72 @@ class ImageParser:
                     
                     if valid and totalCount > 6:
                         xBlockSize = (totalSize + startLength + endLength) / (totalCount + 14)
-                        struct = { otherAxis: otherVal, 'data': items[startIndex:currentIndex+1], 'blockSize': xBlockSize }
-                        if abs(curDiff - lowestDiff) > 1.8 and curDiff < lowestDiff:
-                            if prevCount is None or abs(prevCount - len(struct['data'])) < 2:
-                                # print("Prev:", lowestDiff, "Current:", curDiff)
-                                validTiming = struct
-                                lowestDiff = curDiff
+                        dataSection = items[startIndex:currentIndex + 1]
+                        struct = { otherAxis: otherVal, 'data': dataSection, 'blockSize': xBlockSize, 'startPos': dataSection[0]['start'] }
+                        foundMatch = False
+                        
+                        for key in timingPatterns.keys():
+                            keyOtherVal, keyStartPos, keyBlockSize = list(map(float, key.split("-")))
+                            itemStartPos = struct["startPos"]
+                            threshold = min(xBlockSize, keyBlockSize) * 0.1
+
+                            if self.diff(keyStartPos, itemStartPos, 7) and self.diff(xBlockSize, keyBlockSize, threshold):
+                                if self.diff(otherVal, keyOtherVal, ceil(min(xBlockSize, keyBlockSize))) and otherVal not in rowsParsed[key]:
+                                    timingPatterns[key].append(struct)
+                                    rowsParsed[key].add(otherVal)
+                                    foundMatch = True
+                                    break
+                        
+                        if not foundMatch:
+                            key = f"{otherVal}-{struct['startPos']}-{xBlockSize}"
+                            timingPatterns[key] = [struct]
+                            rowsParsed[key] = set([otherVal])
                     
                     startIndex += 1
+        
+        validTiming = None
+        largestGroup = 0
+        smallestDiff = 10
+        
+        for value in timingPatterns.values():
+            blockSize = value[0]['blockSize']
 
+            if len(value) >= largestGroup:
+                if otherTimingPattern:
+                    targetBlockSize = otherTimingPattern['blockSize']
+                    xRle = { value[0]['y']: value[0]['data'] } if otherAxis == 'y' else { otherTimingPattern['y']: otherTimingPattern['data'] }
+                    yRle = { value[0]['x']: value[0]['data'] } if otherAxis == 'x' else { otherTimingPattern['x']: otherTimingPattern['data'] }
+                
+                    if self.diff(blockSize, targetBlockSize, smallestDiff) and self.checkIntersection(xRle, yRle):
+                        largestGroup = len(value)
+                        smallestDiff = abs(targetBlockSize - blockSize)
+                        validTiming = value[0]
+                
+                elif len(value) > largestGroup:
+                    largestGroup = len(value)
+                    validTiming = value[0]
+    
+        if validTiming is not None:
+            items = [validTiming['startPos'], validTiming[otherAxis]] if otherAxis == 'y' else [validTiming[otherAxis], validTiming['startPos']]
+            timingPatternDir = "Timing Pattern X" if otherAxis == 'y' else "Timing Pattern Y"
+            print(timingPatternDir)
+            print("Returning: ({}, {}) - {}\n".format(items[0], items[1], validTiming['blockSize']))
+        
         return validTiming
+
+    def checkIntersection(self, xRle, yRle):
+        sharedPositions = set()
+        
+        for y, xSegments in xRle.items():
+            for x in range(xSegments[0]["start"], xSegments[-1]["start"] + xSegments[-1]["length"]):
+                sharedPositions.add((x, y))
+
+        for x, ySegments in yRle.items():
+            for y in range(ySegments[0]["start"], ySegments[-1]["start"] + ySegments[-1]["length"]):
+                if (x, y) in sharedPositions:
+                    return True
+        
+        return False
 
     def findAlignmentPatterns(self):
         for i in range(0, len(self.blocks) - 5):
@@ -230,6 +291,98 @@ class ImageParser:
                 if valid:
                     for coord in patternCoords:
                         self.addInvalid(coord[0], coord[1])
+    
+    def findFinderPatterns(self, data, otherAxis, path):
+        finderPatterns = {}
+        rowsParsed = {}
+        
+        finderPatternsVisualization = xmlpy.XMLBuilder('finderVisual.svg')
+        finderPatternsVisualization.addSVG(self.width, self.height)
+        finderPatternsVisualization.addImage(0, 0, self.width, self.height, path)
+
+        for obj in data:
+            for otherVal, value in obj.items():
+                items = value["data"]
+                startIndex = 0
+                while startIndex < len(items) - 5:
+                    if items[startIndex]['color'] != 1:
+                        startIndex += 1
+                        continue
+
+                    aLen, bLen, cLen, dLen, eLen = [i['length'] for i in items[startIndex:startIndex + 5]]
+                    estBlockSize = cLen / 3
+                    valid = [self.diff(i, estBlockSize, estBlockSize * 0.5) for i in [aLen, bLen, dLen, eLen]]
+                    
+                    if False in valid:
+                        startIndex += 1
+                        continue
+                    
+                    estBlockSize = (aLen + bLen + cLen + dLen + eLen) / 7
+                    dataSection = items[startIndex:startIndex + 5]
+                    struct = { otherAxis: otherVal, 'startPos': dataSection[0]['start'], 'blockSize': estBlockSize, 'data': dataSection }
+                    foundMatch = False
+
+                    for key in finderPatterns.keys():
+                        keyStartPos, keyOtherVal, keyBlockSize = list(map(float, key.split("-")))
+                        itemStartPos = struct["startPos"]
+                        threshold = min(estBlockSize, keyBlockSize) * 0.1
+
+                        if self.diff(keyStartPos, itemStartPos, 3) and self.diff(estBlockSize, keyBlockSize, threshold):
+                            if self.diff(otherVal, keyOtherVal, ceil(min(estBlockSize, keyBlockSize) * 3)) and otherVal not in rowsParsed[key]:
+                                    finderPatterns[key].append(struct)
+                                    rowsParsed[key].add(otherVal)
+                                    foundMatch = True
+                                    break
+                        
+                    if not foundMatch:
+                        key = f"{struct["startPos"]}-{otherVal}-{estBlockSize}"
+                        finderPatterns[key] = [struct]
+                        rowsParsed[key] = set([otherVal])
+
+                    startIndex += 1
+
+        keyAndSize = [(x, len(finderPatterns[x])) for x in finderPatterns.keys()]
+        keyAndSize.sort(key=lambda x:(-x[1]))
+        clrs = ["red", "green", "blue"]
+        points = []
+        idx = 0
+
+        for key, _ in keyAndSize[:3]:
+            keyStartPos, keyOtherVal, keyBlockSize = list(map(float, key.split("-")))
+            points.append((keyStartPos, keyOtherVal))
+            finderPatternsVisualization.addCircle(keyStartPos, keyOtherVal, keyBlockSize / 4, clrs[idx % 3])
+            finderPatternsVisualization.addText(keyStartPos, keyOtherVal, keyBlockSize / 1.5, 'yellow', idx)
+            idx += 1
+        
+        finderPatternsVisualization.closeNode('svg')
+        finderPatternsVisualization.closeFile()
+        return self.classifyCorners(points)
+
+    def classifyCorners(self, points):
+        xs = [p[0] for p in points]
+        ys = [p[1] for p in points]
+        left, right = min(xs), max(xs)
+        top, bottom = min(ys), max(ys)
+        
+        corners = {
+            (left, top): "top-left",
+            (right, top): "top-right",
+            (left, bottom): "bottom-left",
+            (right, bottom): "bottom-right"
+        }
+        
+        result = {}
+        
+        for p in points:
+            bestCorner = min(corners.keys(), key=lambda c: (p[0]-c[0])**2 + (p[1]-c[1])**2)
+            result[corners[bestCorner]] = { "actual": p, "ideal": bestCorner }
+        
+        print()
+        for k, v in result.items():
+            print(k, v)
+        
+        print()
+        return result     
     
     def readFormatVersionInfo(self):
         assert len(self.blocks) == len(self.blocks[0])
@@ -271,7 +424,7 @@ class ImageParser:
         # Added invalid position to singular remainder bit
         self.addInvalid(len(self.blocks) - 8, 8)
 
-        unmaskedFormat = format(int("".join(formatInfo), 2) ^ int(formatMask, 2), '015b')        
+        unmaskedFormat = format(int("".join(formatInfo), 2) ^ int(formatMask, 2), '015b')
         errorCorrectionLevel = int(unmaskedFormat[:2], 2)
         maskPattern = int(unmaskedFormat[2:5], 2)
         self.ecl = self.eclMap[errorCorrectionLevel]
@@ -377,14 +530,14 @@ class ImageParser:
                     
                     text = "W" if self.isLightRoi(pxX, pxY) else "B"
                     bgColor = "black" if text == "B" else "white"
-                    if self.getMaskFunction(i, j):
+                    if self.applyMask(i, j):
                         bgColor = "black" if text == "W" else "white"
                     
                     out.addRect(pxX, pxY, self.blockSize, self.blockSize, bgColor, 'red', 1)
 
                 except:
-                    traceback.print_exc()
-                    continue
+                    print_exc()
+                    raise Exception("Error traversing blocks!")
         
         out.closeNode('svg')
         out.closeFile()
@@ -422,9 +575,10 @@ class ImageParser:
 
         x, y = self.blocks[i][j]
         info = "0" if self.isLightRoi(x, y) else "1"
-        textColor = "black"
-        
-        if self.getMaskFunction(i, j):
+        text = "W" if info == "0" else "B"
+        textColor = "black" if info == "0" else "black"
+
+        if self.applyMask(i, j):
             info = "1" if info == "0" else "0"
         
         count = len(self.qr)
@@ -473,7 +627,7 @@ class ImageParser:
             return [i1, j1, True]
         
         except:
-            traceback.print_exc()
+            print_exc()
     
     def readDataBlocks(self, i, j):
         run = True
@@ -482,17 +636,26 @@ class ImageParser:
 
         self.decodeData()
 
-    def getMaskFunction(self, x, y):
+    def applyMask(self, i, j):
         match self.mask:
-            case 0: return (x + y) % 2 == 0
-            case 1: return x % 2 == 0
-            case 2: return y % 3 == 0
-            case 3: return (x + y) % 3 == 0
-            case 4: return (x // 2 + y // 3) % 2 == 0
-            case 5: return (x * y) % 2 + (x * y) % 3 == 0
-            case 6: return ((x * y) % 2 + (x * y) % 3) % 2 == 0
-            case 7: return ((x + y) % 2 + (x * y) % 3) % 2 == 0
-            case _: return False
+            case 0:
+                return (i + j) % 2 == 0
+            case 1:
+                return i % 2 == 0
+            case 2:
+                return j % 3 == 0
+            case 3:
+                return (i + j) % 3 == 0
+            case 4:
+                return ((i // 2) + (j // 3)) % 2 == 0
+            case 5:
+                return ((i * j) % 2) + ((i * j) % 3) == 0
+            case 6:
+                return (((i * j) % 2) + ((i * j) % 3)) % 2 == 0
+            case 7:
+                return (((i + j) % 2) + ((i * j) % 3)) % 2 == 0
+            case _:
+                raise ValueError("Invalid mask pattern")
     
     def getDataBlockSizes(self):
         key = f"{self.version}-{self.ecl}"
@@ -522,23 +685,24 @@ class ImageParser:
             key = i % errorBlocks if i < turnNegativeIndex else changeIndex + (i % errorBlocks)
             roundRobin[key].append(byte)
         
-        finalStream = []
+        dataStream = []
         for key in range(errorBlocks):
-            finalStream += roundRobin[key]
+            dataStream += roundRobin[key]
         
-        finalBits = "".join([f"{b:08b}" for b in finalStream])
-        return finalBits
+        dataBits = "".join([f"{b:08b}" for b in dataStream])
+        return [dataBits, "".join(self.qr)[len(dataBits):]]
 
     def decodeData(self):
         blockSizes, changeIndex = self.getDataBlockSizes()
-        bitstring = self.decodeInterleaved(blockSizes, changeIndex)
+        bitstring, errorBits = self.decodeInterleaved(blockSizes, changeIndex)
+
         startIndex = 0
         result = ""
 
         while startIndex < len(bitstring) - 4:
             encoding = int(bitstring[startIndex : startIndex + 4], 2)
             startIndex += 4
-            
+
             if encoding == 0:
                 break
         

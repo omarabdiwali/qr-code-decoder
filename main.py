@@ -1,28 +1,66 @@
-import argparse
-import traceback
 import parse
-from PIL import Image, ImageFilter
+from time import time
+from argparse import ArgumentParser
+from traceback import print_exc
+from PIL import Image, ImageFilter, ImageEnhance
 from collections import defaultdict
 
 def readQRCode(filter):
     try:
+        start = time()
         passed = False
-        parser = argparse.ArgumentParser()
+        parser = ArgumentParser()
         parser.add_argument("--input", type=str, required=True, help="Input file path")
         parser.add_argument("--output", type=str, required=True, help='Output file path')
         args = parser.parse_args()
 
-        image = Image.open(args.input).convert("L")
-        modifiedImage = image.filter(filter)
-        # modifiedImage.save('modifiedImage.png')
-        parser = parse.ImageParser(modifiedImage.load(), image.width, image.height, args.output)
-        parser.writer.addSVG(image.width, image.height)
-        parser.writer.addImage(0, 0, image.width, image.height, args.input)
+        useModified = False
+        image = Image.open(args.input)
+        blackAndWhite = image.convert('L')
+        
+        if filter is None:
+            modifiedImage = blackAndWhite
+        elif type(filter) == str:
+            enhancer = ImageEnhance.Sharpness(blackAndWhite)
+            modifiedImage = enhancer.enhance(2.0)
+        else:
+            modifiedImage = blackAndWhite.filter(filter)
 
+        parser = parse.ImageParser(modifiedImage.load(), modifiedImage.width, modifiedImage.height, args.output)
         rleX = parser.runLengthEncodingX()
         rleY = parser.runLengthEncodingY()
+        finders = parser.findFinderPatterns(rleX, 'y', args.input)
+        
+        if 'bottom-right' in finders:
+            if 'top-left' not in finders:
+                modifiedImage = modifiedImage.rotate(180, expand=True)
+                image = image.rotate(180, expand=True)
+            elif 'top-right' not in finders:
+                modifiedImage = modifiedImage.rotate(-90, expand=True)
+                image = image.rotate(-90, expand=True)
+            elif 'bottom-left' not in finders:
+                modifiedImage = modifiedImage.rotate(90, expand=True)
+                image = image.rotate(90, expand=True)
+            
+            image.save('temp.png')
+            useModified = True
+            parser.updateParserValues(modifiedImage)
+            rleX = parser.runLengthEncodingX()
+            rleY = parser.runLengthEncodingY()
+        
+        if useModified:
+            parser.writer.addSVG(image.width, image.height)
+            parser.writer.addImage(0, 0, image.width, image.height, 'temp.png')
+        else:
+            parser.writer.addSVG(modifiedImage.width, modifiedImage.height)
+            parser.writer.addImage(0, 0, modifiedImage.width, modifiedImage.height, args.input)
+
         tX = parser.findTimingPatterns(rleX, 'y')
-        tY = parser.findTimingPatterns(rleY, 'x', len(tX['data']) if tX else None)
+        tY = parser.findTimingPatterns(rleY, 'x', tX)
+        
+        if not tX or not tY:
+            tY = parser.findTimingPatterns(rleY, 'x')
+            tX = parser.findTimingPatterns(rleX, 'y', tY)
         
         finderCoords = defaultdict(list)
         # stored in order [TL, BR]
@@ -105,14 +143,21 @@ def readQRCode(filter):
         passed = True
     except Exception:
         print()
-        traceback.print_exc()
+        print_exc()
         print()
     finally:
         parser.writer.closeNode('svg')
         parser.writer.closeFile()
+        end = time()
+        duration = round((end - start), 5)
+        if passed:
+            print("\nProcessing this image took {} seconds.".format(duration))
+        else:
+            print("Processing this image took {} seconds.\n".format(duration))
+        
         return passed
 
-imageFilters = [ImageFilter.EDGE_ENHANCE, ImageFilter.SMOOTH, ImageFilter.GaussianBlur]
+imageFilters = [None, ImageFilter.EDGE_ENHANCE, ImageFilter.SMOOTH, ImageFilter.GaussianBlur, 'sharpness']
 for idx, filter in enumerate(imageFilters):
     print(f"Attempt #{idx+1}:")
     if readQRCode(filter):
