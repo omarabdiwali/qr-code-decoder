@@ -5,6 +5,17 @@ from traceback import print_exc
 from PIL import Image, ImageFilter, ImageEnhance
 from collections import defaultdict
 
+def applyFilter(image, filter):
+    blackAndWhite = image.convert('L')
+
+    if filter is None:
+        return blackAndWhite
+    elif type(filter) == str:
+        enhancer = ImageEnhance.Sharpness(blackAndWhite)
+        return enhancer.enhance(2.0)
+    else:
+        return blackAndWhite.filter(filter)
+
 def readQRCode(filter):
     try:
         start = time()
@@ -14,46 +25,21 @@ def readQRCode(filter):
         parser.add_argument("--output", type=str, required=True, help='Output file path')
         args = parser.parse_args()
 
-        useModified = False
         image = Image.open(args.input)
-        blackAndWhite = image.convert('L')
-        
-        if filter is None:
-            modifiedImage = blackAndWhite
-        elif type(filter) == str:
-            enhancer = ImageEnhance.Sharpness(blackAndWhite)
-            modifiedImage = enhancer.enhance(2.0)
-        else:
-            modifiedImage = blackAndWhite.filter(filter)
-
+        modifiedImage = applyFilter(image, filter)
         parser = parse.ImageParser(modifiedImage.load(), modifiedImage.width, modifiedImage.height, args.output)
         rleX = parser.runLengthEncodingX()
         rleY = parser.runLengthEncodingY()
-        finders = parser.findFinderPatterns(rleX, 'y', args.input)
-        
-        if 'bottom-right' in finders:
-            if 'top-left' not in finders:
-                modifiedImage = modifiedImage.rotate(180, expand=True)
-                image = image.rotate(180, expand=True)
-            elif 'top-right' not in finders:
-                modifiedImage = modifiedImage.rotate(-90, expand=True)
-                image = image.rotate(-90, expand=True)
-            elif 'bottom-left' not in finders:
-                modifiedImage = modifiedImage.rotate(90, expand=True)
-                image = image.rotate(90, expand=True)
-            
-            image.save('temp.png')
-            useModified = True
-            parser.updateParserValues(modifiedImage)
-            rleX = parser.runLengthEncodingX()
-            rleY = parser.runLengthEncodingY()
-        
-        if useModified:
-            parser.writer.addSVG(image.width, image.height)
-            parser.writer.addImage(0, 0, image.width, image.height, 'temp.png')
-        else:
-            parser.writer.addSVG(modifiedImage.width, modifiedImage.height)
-            parser.writer.addImage(0, 0, modifiedImage.width, modifiedImage.height, args.input)
+
+        rotatedImage = parser.findFinderPatterns(rleX, 'y', args.input, image)
+        rotatedImage.save('temp.png')
+        modifiedImage = applyFilter(rotatedImage, filter)
+
+        parser.updateParserValues(modifiedImage)
+        rleX = parser.runLengthEncodingX()
+        rleY = parser.runLengthEncodingY()
+        parser.writer.addSVG(modifiedImage.width, modifiedImage.height)
+        parser.writer.addImage(0, 0, modifiedImage.width, modifiedImage.height, 'temp.png')
 
         tX = parser.findTimingPatterns(rleX, 'y')
         tY = parser.findTimingPatterns(rleY, 'x', tX)
@@ -146,7 +132,6 @@ def readQRCode(filter):
         print_exc()
         print()
     finally:
-        parser.writer.closeNode('svg')
         parser.writer.closeFile()
         end = time()
         duration = round((end - start), 5)

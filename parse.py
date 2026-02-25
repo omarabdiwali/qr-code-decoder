@@ -1,7 +1,8 @@
 import xmlpy
+from PIL import Image
 from traceback import print_exc
 from collections import defaultdict
-from math import ceil
+from math import ceil, dist, atan2, degrees
 
 class ImageParser:
     def __init__(self, data, width, height, path):
@@ -292,19 +293,15 @@ class ImageParser:
                     for coord in patternCoords:
                         self.addInvalid(coord[0], coord[1])
     
-    def findFinderPatterns(self, data, otherAxis, path):
+    def findFinderPatterns(self, data, otherAxis, path, image):
         finderPatterns = {}
         rowsParsed = {}
-        
-        finderPatternsVisualization = xmlpy.XMLBuilder('finderVisual.svg')
-        finderPatternsVisualization.addSVG(self.width, self.height)
-        finderPatternsVisualization.addImage(0, 0, self.width, self.height, path)
 
         for obj in data:
             for otherVal, value in obj.items():
                 items = value["data"]
                 startIndex = 0
-                while startIndex < len(items) - 5:
+                while startIndex < len(items) - 4:
                     if items[startIndex]['color'] != 1:
                         startIndex += 1
                         continue
@@ -314,7 +311,7 @@ class ImageParser:
                     valid = [self.diff(i, estBlockSize, estBlockSize * 0.5) for i in [aLen, bLen, dLen, eLen]]
                     
                     if False in valid:
-                        startIndex += 1
+                        startIndex += 2
                         continue
                     
                     estBlockSize = (aLen + bLen + cLen + dLen + eLen) / 7
@@ -327,7 +324,7 @@ class ImageParser:
                         itemStartPos = struct["startPos"]
                         threshold = min(estBlockSize, keyBlockSize) * 0.1
 
-                        if self.diff(keyStartPos, itemStartPos, 3) and self.diff(estBlockSize, keyBlockSize, threshold):
+                        if self.diff(keyStartPos, itemStartPos, 7) and self.diff(estBlockSize, keyBlockSize, threshold):
                             if self.diff(otherVal, keyOtherVal, ceil(min(estBlockSize, keyBlockSize) * 3)) and otherVal not in rowsParsed[key]:
                                     finderPatterns[key].append(struct)
                                     rowsParsed[key].add(otherVal)
@@ -339,7 +336,7 @@ class ImageParser:
                         finderPatterns[key] = [struct]
                         rowsParsed[key] = set([otherVal])
 
-                    startIndex += 1
+                    startIndex += 2
 
         keyAndSize = [(x, len(finderPatterns[x])) for x in finderPatterns.keys()]
         keyAndSize.sort(key=lambda x:(-x[1]))
@@ -347,43 +344,37 @@ class ImageParser:
         points = []
         idx = 0
 
+        finderPatternsVisualization = xmlpy.XMLBuilder('finderVisual.svg')
+        finderPatternsVisualization.addSVG(self.width, self.height)
+        finderPatternsVisualization.addImage(0, 0, self.width, self.height, path)
+
         for key, _ in keyAndSize[:3]:
             keyStartPos, keyOtherVal, keyBlockSize = list(map(float, key.split("-")))
             points.append((keyStartPos, keyOtherVal))
-            finderPatternsVisualization.addCircle(keyStartPos, keyOtherVal, keyBlockSize / 4, clrs[idx % 3])
+            finderPatternsVisualization.addCircle(keyStartPos, keyOtherVal, keyBlockSize / 4, clrs[idx])
             finderPatternsVisualization.addText(keyStartPos, keyOtherVal, keyBlockSize / 1.5, 'yellow', idx)
             idx += 1
         
-        finderPatternsVisualization.closeNode('svg')
         finderPatternsVisualization.closeFile()
-        return self.classifyCorners(points)
+        return self.rotateImage(points, image)
 
-    def classifyCorners(self, points):
-        xs = [p[0] for p in points]
-        ys = [p[1] for p in points]
-        left, right = min(xs), max(xs)
-        top, bottom = min(ys), max(ys)
-        
-        corners = {
-            (left, top): "top-left",
-            (right, top): "top-right",
-            (left, bottom): "bottom-left",
-            (right, bottom): "bottom-right"
-        }
-        
-        result = {}
-        
-        for p in points:
-            bestCorner = min(corners.keys(), key=lambda c: (p[0]-c[0])**2 + (p[1]-c[1])**2)
-            result[corners[bestCorner]] = { "actual": p, "ideal": bestCorner }
-        
-        print()
-        for k, v in result.items():
-            print(k, v)
-        
-        print()
-        return result     
-    
+    def rotateImage(self, points, image):
+        tl = min(points, key=lambda p: sum(dist(p, other) for other in points))
+        otherPoints = [p for p in points if p != tl]
+        pA, pB = otherPoints
+
+        angleA = atan2(pA[1] - tl[1], pA[0] - tl[0])
+        angleB = atan2(pB[1] - tl[1], pB[0] - tl[0])
+        v1 = (pA[0] - tl[0], pA[1] - tl[1])
+        v2 = (pB[0] - tl[0], pB[1] - tl[1])
+
+        if (v1[0] * v2[1] - v1[1] * v2[0]) < 0:
+            targetAngle = degrees(angleB)
+        else:
+            targetAngle = degrees(angleA)
+
+        return image.rotate(targetAngle, resample=Image.BICUBIC, expand=True, fillcolor='white')
+
     def readFormatVersionInfo(self):
         assert len(self.blocks) == len(self.blocks[0])
         formatInfo = []
@@ -483,7 +474,11 @@ class ImageParser:
             invalid = False
             
             for x, y in row[:7]:
-                if self.isLightRoi(x, y):
+                try:
+                    if self.isLightRoi(x, y):
+                        invalid = True
+                        break
+                except:
                     invalid = True
                     break
             
@@ -537,9 +532,9 @@ class ImageParser:
 
                 except:
                     print_exc()
+                    out.closeFile()
                     raise Exception("Error traversing blocks!")
         
-        out.closeNode('svg')
         out.closeFile()
     
     def readVersion(self):

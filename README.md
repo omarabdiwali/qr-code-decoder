@@ -31,6 +31,7 @@ The following images are based on this QR code, which has the text 'hello world'
 
 - **Intelligent Processing**  
    - Dynamically calculates block sizes and handles orientation variations.
+   - Rotates the image based on the finder pattern positions
 
 ## Requirements
 
@@ -79,9 +80,7 @@ F --> G[Decoded Output]
 ## Limitations
 
 - Static image input only (no camera support)
-- Best results with standard QR codes
 - Currently does not include any error handling
-- Can't adjust the QR Code to its correct orientation
 
 ## Development Notes
 
