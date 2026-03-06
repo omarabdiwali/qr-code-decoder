@@ -16,7 +16,7 @@ def applyFilter(image, filter):
     else:
         return blackAndWhite.filter(filter)
 
-def readQRCode(filter):
+def readQRCode(filter, crop=True):
     try:
         start = time()
         passed = False
@@ -31,15 +31,52 @@ def readQRCode(filter):
         rleX = parser.runLengthEncodingX()
         rleY = parser.runLengthEncodingY()
 
-        rotatedImage = parser.findFinderPatterns(rleX, 'y', args.input, image)
+        rotatedImage, rotatedDataValues = parser.findFinderPatterns(rleX, 'y', args.input, image)
         rotatedImage.save('temp.png')
         modifiedImage = applyFilter(rotatedImage, filter)
 
-        parser.updateParserValues(modifiedImage)
+        parser.updateParserValues(modifiedImage, 0, 0)
         rleX = parser.runLengthEncodingX()
         rleY = parser.runLengthEncodingY()
         parser.writer.addSVG(modifiedImage.width, modifiedImage.height)
         parser.writer.addImage(0, 0, modifiedImage.width, modifiedImage.height, 'temp.png')
+
+        if crop:
+            _, dataValues = parser.findFinderPatterns(rleX, 'y', args.input, image, False)
+
+            borders = [(0, 0), (0, 0), (0, 0), (0, 0)]
+            ltrb = [0, 0, 0, 0]
+            finderBlockSize = dataValues['blockSize']
+            del dataValues['blockSize']
+
+            for key, val in dataValues.items():
+                x, y = val[0], val[1]
+                if key == "tl":
+                    mostLeft = max(0, x - finderBlockSize * 6)
+                    mostTop = max(0, y - finderBlockSize * 6)
+                    borders[0] = (mostLeft, mostTop)
+                elif key == "tr":
+                    mostRight = min(x + finderBlockSize * 13, modifiedImage.width)
+                    mostTop = min(max(y - finderBlockSize * 6, 0), borders[0][1])
+                    borders[0] = (borders[0][0], mostTop)
+                    borders[1] = (mostRight, mostTop)
+                    ltrb[1] = mostTop
+                    ltrb[2] = mostRight
+                elif key == "bl":
+                    mostLeft = min(max(x - finderBlockSize * 6, 0), borders[0][0])
+                    mostBottom = min(y + finderBlockSize * 11, modifiedImage.height)
+                    borders[0] = (mostLeft, borders[0][1])
+                    borders[2] = (mostLeft, mostBottom)
+                    ltrb[0] = mostLeft
+                    ltrb[3] = mostBottom
+            
+            borders[3] = (borders[1][0], borders[2][1])
+            croppedImage = modifiedImage.crop(ltrb)
+            croppedImage.save('cropped.png')
+
+            parser.updateParserValues(croppedImage, ltrb[0], ltrb[1])
+            rleX = parser.runLengthEncodingX()
+            rleY = parser.runLengthEncodingY()
 
         tX = parser.findTimingPatterns(rleX, 'y')
         tY = parser.findTimingPatterns(rleY, 'x', tX)
@@ -72,7 +109,7 @@ def readQRCode(filter):
                     br = (item["start"] + item["length"], tX["y"] + parser.blockSize)
                     timingBox["x"].append(br)
             
-            parser.writer.addRect(item["start"], tX["y"], item["length"], parser.blockSize, "none", "gold", 0.4)
+            parser.writer.addRect(parser.xDiff + item["start"], parser.yDiff + tX["y"], item["length"], parser.blockSize, "none", "gold", 0.4)
         
         for idx, item in enumerate(tY["data"]):
             if idx == len(tY["data"]) - 1:
@@ -84,7 +121,7 @@ def readQRCode(filter):
                 tl = (tY["x"], item["start"])
                 timingBox["y"].append(tl)
         
-            parser.writer.addRect(tY["x"], item["start"], parser.blockSize, item["length"], "none", "gold", 0.4)
+            parser.writer.addRect(parser.xDiff + tY["x"], parser.yDiff + item["start"], parser.blockSize, item["length"], "none", "gold", 0.4)
 
         timingList = list(timingBox.values())
         findersPos = {}
@@ -138,7 +175,11 @@ def readQRCode(filter):
         if passed:
             print("\nProcessing this image took {} seconds.".format(duration))
         else:
-            print("Processing this image took {} seconds.\n".format(duration))
+            if crop == False:
+                print("Processing this image took {} seconds.\n".format(duration))
+            else:
+                print("Processing this image (cropping) took {} seconds. Trying second option...\n".format(duration))
+                return readQRCode(filter, False)
         
         return passed
 

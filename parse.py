@@ -19,6 +19,7 @@ class ImageParser:
         self.blocks = []
         self.version = None
         self.qr = []
+        self.xDiff, self.yDiff = 0, 0
         self.invalid = set()
         self.eclMap = { 0: 'M', 1: 'L', 2: 'H', 3: 'Q' }
         self.qrDataBlocks = {
@@ -71,10 +72,12 @@ class ImageParser:
             '+', '-', '.', '/', ':'
         ]
     
-    def updateParserValues(self, image):
+    def updateParserValues(self, image, xDiff, yDiff):
         self.data = image.load()
         self.width = image.width
         self.height = image.height
+        self.xDiff = xDiff
+        self.yDiff = yDiff
 
     def getColorValue(self, val):
         return int(val < 125)
@@ -228,6 +231,8 @@ class ImageParser:
         validTiming = None
         largestGroup = 0
         smallestDiff = 10
+
+        # print(timingPatterns.keys(), [len(v) for v in timingPatterns.values()])
         
         for value in timingPatterns.values():
             blockSize = value[0]['blockSize']
@@ -293,7 +298,7 @@ class ImageParser:
                     for coord in patternCoords:
                         self.addInvalid(coord[0], coord[1])
     
-    def findFinderPatterns(self, data, otherAxis, path, image):
+    def findFinderPatterns(self, data, otherAxis, path, image, changeImage=True):
         finderPatterns = {}
         rowsParsed = {}
 
@@ -343,37 +348,65 @@ class ImageParser:
         clrs = ["red", "green", "blue"]
         points = []
         idx = 0
+        avgBlockSize = 0
 
-        finderPatternsVisualization = xmlpy.XMLBuilder('finderVisual.svg')
-        finderPatternsVisualization.addSVG(self.width, self.height)
-        finderPatternsVisualization.addImage(0, 0, self.width, self.height, path)
+        if changeImage:
+            finderPatternsVisualization = xmlpy.XMLBuilder('finderVisual.svg')
+            finderPatternsVisualization.addSVG(self.width, self.height)
+            finderPatternsVisualization.addImage(0, 0, self.width, self.height, path)
 
         for key, _ in keyAndSize[:3]:
             keyStartPos, keyOtherVal, keyBlockSize = list(map(float, key.split("-")))
             points.append((keyStartPos, keyOtherVal))
-            finderPatternsVisualization.addCircle(keyStartPos, keyOtherVal, keyBlockSize / 4, clrs[idx])
-            finderPatternsVisualization.addText(keyStartPos, keyOtherVal, keyBlockSize / 1.5, 'yellow', idx)
+            avgBlockSize += keyBlockSize
+            if changeImage:
+                finderPatternsVisualization.addCircle(keyStartPos, keyOtherVal, keyBlockSize / 4, clrs[idx])
+                finderPatternsVisualization.addText(keyStartPos, keyOtherVal, keyBlockSize / 1.5, 'yellow', idx)
             idx += 1
         
-        finderPatternsVisualization.closeFile()
-        return self.rotateImage(points, image)
+        avgBlockSize /= 3.0
+        if changeImage:
+            finderPatternsVisualization.closeFile()
+            newImage, dataPoints = self.rotateImage(points, image)
+            dataPoints["blockSize"] = avgBlockSize
+            return [newImage, dataPoints]
+        else:
+            dataPoints = self.getPointsPos(points)
+            dataPoints["blockSize"] = avgBlockSize
+            return [None, dataPoints]
 
-    def rotateImage(self, points, image):
+    def getPointsPos(self, points):
+        dataPoints = {}
         tl = min(points, key=lambda p: sum(dist(p, other) for other in points))
+        dataPoints["tl"] = tl
         otherPoints = [p for p in points if p != tl]
         pA, pB = otherPoints
-
-        angleA = atan2(pA[1] - tl[1], pA[0] - tl[0])
-        angleB = atan2(pB[1] - tl[1], pB[0] - tl[0])
         v1 = (pA[0] - tl[0], pA[1] - tl[1])
         v2 = (pB[0] - tl[0], pB[1] - tl[1])
 
-        if (v1[0] * v2[1] - v1[1] * v2[0]) < 0:
+        if (v1[0] * v2[0] - v1[1] * v2[0]) < 0:
+            dataPoints["tr"] = pB
+            dataPoints["bl"] = pA
+        else:
+            dataPoints["tr"] = pA
+            dataPoints["bl"] = pB
+        
+        return dataPoints
+
+    def rotateImage(self, points, image):
+        dataPoints = self.getPointsPos(points)
+        tl = min(points, key=lambda p: sum(dist(p, other) for other in points))
+        otherPoints = [p for p in points if p != tl]
+        pA, pB = otherPoints
+        angleA = atan2(pA[1] - tl[1], pA[0] - tl[0])
+        angleB = atan2(pB[1] - tl[1], pB[0] - tl[0])
+
+        if dataPoints["tr"] == pB:
             targetAngle = degrees(angleB)
         else:
             targetAngle = degrees(angleA)
 
-        return image.rotate(targetAngle, resample=Image.BICUBIC, expand=True, fillcolor='white')
+        return [image.rotate(targetAngle, resample=Image.BICUBIC, expand=True, fillcolor='white'), dataPoints]
 
     def readFormatVersionInfo(self):
         assert len(self.blocks) == len(self.blocks[0])
@@ -383,7 +416,7 @@ class ImageParser:
         for idx in range(len(self.blocks) - 1, len(self.blocks) - 8, -1):
             row = self.blocks[idx]
             x, y = row[8]
-            self.writer.addRect(x, y, self.blockSize, self.blockSize, "none", "purple", 0.5)
+            self.writer.addRect(self.xDiff + x, self.yDiff + y, self.blockSize, self.blockSize, "none", "purple", 0.5)
             formatInfo.append("0" if self.isLightRoi(x, y) else "1")
             self.addInvalid(idx, 8)
         
@@ -392,7 +425,7 @@ class ImageParser:
             x, y = row[8]
             if self.isInvalid(idx, 8):
                 continue
-            self.writer.addRect(x, y, self.blockSize, self.blockSize, "none", "purple", 0.5)
+            self.writer.addRect(self.xDiff + x, self.yDiff + y, self.blockSize, self.blockSize, "none", "purple", 0.5)
             formatInfo.append("0" if self.isLightRoi(x, y) else "1")
             self.addInvalid(idx, 8)
         
@@ -401,7 +434,7 @@ class ImageParser:
             x, y = row[idx]
             if self.isInvalid(8, idx):
                 continue
-            self.writer.addRect(x, y, self.blockSize, self.blockSize, "none", "green", 0.5)
+            self.writer.addRect(self.xDiff + x, self.yDiff + y, self.blockSize, self.blockSize, "none", "green", 0.5)
             self.addInvalid(8, idx)
         
         for idx in range(len(self.blocks) - 8, len(self.blocks)):
@@ -409,7 +442,7 @@ class ImageParser:
             x, y = row[idx]
             if self.isInvalid(8, idx):
                 continue
-            self.writer.addRect(x, y, self.blockSize, self.blockSize, "none", "green", 0.5)
+            self.writer.addRect(self.xDiff + x, self.yDiff + y, self.blockSize, self.blockSize, "none", "green", 0.5)
             self.addInvalid(8, idx)
 
         # Added invalid position to singular remainder bit
@@ -548,8 +581,8 @@ class ImageParser:
             for i in range(size - 11, size - 8):
                 x, y = self.blocks[i][j]
                 x1, y1 = self.blocks[j][i]
-                self.writer.addRect(x, y, self.blockSize, self.blockSize, 'none', 'orange', 0.5)
-                self.writer.addRect(x1, y1, self.blockSize, self.blockSize, 'none', 'orange', 0.5)
+                self.writer.addRect(self.xDiff + x, self.yDiff + y, self.blockSize, self.blockSize, 'none', 'orange', 0.5)
+                self.writer.addRect(self.xDiff + x1, self.yDiff + y1, self.blockSize, self.blockSize, 'none', 'orange', 0.5)
                 self.addInvalid(i, j)
                 self.addInvalid(j, i)
         
@@ -582,8 +615,8 @@ class ImageParser:
         if idx == 0:
             self.color = 'cyan' if self.color == 'red' or self.color == "none" else 'red'
 
-        self.writer.addRect(x, y, self.blockSize, self.blockSize, self.color, 'yellow', 0.1, 0.6)
-        self.writer.addText(x + (self.blockSize / 4), y + (self.blockSize / 1.3), self.blockSize / 5, textColor, len(self.qr))
+        self.writer.addRect(self.xDiff + x, self.yDiff + y, self.blockSize, self.blockSize, self.color, 'yellow', 0.1, 0.6)
+        self.writer.addText(x + (self.blockSize / 4) + self.xDiff, y + (self.blockSize / 1.3) + self.yDiff, self.blockSize / 5, textColor, len(self.qr))
         self.qr.append(info)
     
     def handleInvalidMovement(self, i, j):
