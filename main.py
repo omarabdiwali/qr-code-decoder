@@ -42,7 +42,7 @@ def readQRCode(filter, crop=True):
         parser.writer.addImage(0, 0, modifiedImage.width, modifiedImage.height, 'temp.png')
 
         if crop:
-            _, dataValues = parser.findFinderPatterns(rleX, 'y', args.input, image, False)
+            _, dataValues = parser.findFinderPatterns(rleX, 'y', 'temp.png', modifiedImage, False)
 
             borders = [(0, 0), (0, 0), (0, 0), (0, 0)]
             ltrb = [0, 0, 0, 0]

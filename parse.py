@@ -355,16 +355,44 @@ class ImageParser:
             finderPatternsVisualization.addSVG(self.width, self.height)
             finderPatternsVisualization.addImage(0, 0, self.width, self.height, path)
 
-        for key, _ in keyAndSize[:3]:
+        classify = {}
+        currentLargest = { "key": "", "size": 0 }
+
+        for key, _ in keyAndSize[:6]:
             keyStartPos, keyOtherVal, keyBlockSize = list(map(float, key.split("-")))
-            points.append((keyStartPos, keyOtherVal))
-            avgBlockSize += keyBlockSize
-            if changeImage:
-                finderPatternsVisualization.addCircle(keyStartPos, keyOtherVal, keyBlockSize / 4, clrs[idx])
-                finderPatternsVisualization.addText(keyStartPos, keyOtherVal, keyBlockSize / 1.5, 'yellow', idx)
+            foundMatch = False
+
+            for blockSize in classify.keys():
+                threshold = min(blockSize, keyBlockSize) * 0.25
+                if self.diff(blockSize, keyBlockSize, threshold):
+                    classify[blockSize].append((keyStartPos, keyOtherVal, keyBlockSize))
+                    curSize = len(classify[blockSize])
+                    
+                    if currentLargest["key"] == blockSize:
+                        currentLargest["size"] += 1
+                    elif curSize > currentLargest["size"]:
+                        currentLargest["key"] = blockSize
+                        currentLargest["size"] = curSize
+                    
+                    foundMatch = True
+                    break
+            
+            if not foundMatch:
+                classify[keyBlockSize] = [(keyStartPos, keyOtherVal, keyBlockSize)]
+                if currentLargest["key"] == "":
+                    currentLargest["key"] = keyBlockSize
+                    currentLargest["size"] += 1
             idx += 1
         
+        for item in classify[currentLargest["key"]][:3]:
+            points.append((item[0], item[1]))
+            avgBlockSize += item[2]
+            if changeImage:
+                finderPatternsVisualization.addCircle(item[0], item[1], item[2] / 4, clrs[idx % len(clrs)])
+                finderPatternsVisualization.addText(item[0], item[1], item[2] / 1.5, 'gray', f"({item[0]},{item[1]})")
+        
         avgBlockSize /= 3.0
+
         if changeImage:
             finderPatternsVisualization.closeFile()
             newImage, dataPoints = self.rotateImage(points, image)
@@ -383,8 +411,9 @@ class ImageParser:
         pA, pB = otherPoints
         v1 = (pA[0] - tl[0], pA[1] - tl[1])
         v2 = (pB[0] - tl[0], pB[1] - tl[1])
+        crossProduct = v1[0] * v2[1] - v1[1] * v2[0]
 
-        if (v1[0] * v2[0] - v1[1] * v2[0]) < 0:
+        if crossProduct < 0:
             dataPoints["tr"] = pB
             dataPoints["bl"] = pA
         else:
