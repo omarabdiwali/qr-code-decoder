@@ -18,12 +18,13 @@ def applyFilter(image, filter):
 
 def readQRCode(filter, crop=True):
     try:
+        parser = None
         start = time()
         passed = False
-        parser = ArgumentParser()
-        parser.add_argument("--input", type=str, required=True, help="Input file path")
-        parser.add_argument("--output", type=str, required=True, help='Output file path')
-        args = parser.parse_args()
+        argparser = ArgumentParser()
+        argparser.add_argument("--input", type=str, required=True, help="Input file path")
+        argparser.add_argument("--output", type=str, required=True, help='Output file path')
+        args = argparser.parse_args()
 
         image = Image.open(args.input)
         modifiedImage = applyFilter(image, filter)
@@ -31,18 +32,21 @@ def readQRCode(filter, crop=True):
         rleX = parser.runLengthEncodingX()
         rleY = parser.runLengthEncodingY()
 
-        rotatedImage, rotatedDataValues = parser.findFinderPatterns(rleX, 'y', args.input, image)
-        rotatedImage.save('temp.png')
-        modifiedImage = applyFilter(rotatedImage, filter)
-
-        parser.updateParserValues(modifiedImage, 0, 0)
-        rleX = parser.runLengthEncodingX()
-        rleY = parser.runLengthEncodingY()
+        rotatedImage, rotatedDataValues, isRotated = parser.findFinderPatterns(rleX, 'y', args.input, image)
+        
+        if isRotated:
+            rotatedImage.save('temp.png')
+            modifiedImage = applyFilter(rotatedImage, filter)
+            parser.updateParserValues(modifiedImage, 0, 0)
+            rleX = parser.runLengthEncodingX()
+            rleY = parser.runLengthEncodingY()
+        
+        imageSrc = 'temp.png' if isRotated else args.input
         parser.writer.addSVG(modifiedImage.width, modifiedImage.height)
-        parser.writer.addImage(0, 0, modifiedImage.width, modifiedImage.height, 'temp.png')
+        parser.writer.addImage(0, 0, modifiedImage.width, modifiedImage.height, imageSrc)
 
         if crop:
-            _, dataValues = parser.findFinderPatterns(rleX, 'y', 'temp.png', modifiedImage, False)
+            _, dataValues = parser.findFinderPatterns(rleX, 'y', imageSrc, modifiedImage, False)
 
             borders = [(0, 0), (0, 0), (0, 0), (0, 0)]
             ltrb = [0, 0, 0, 0]
@@ -163,13 +167,15 @@ def readQRCode(filter, crop=True):
 
         startX, startY = len(parser.blocks) - 1, len(parser.blocks[0]) - 1
         parser.readDataBlocks(startX, startY)
+        parser.decodeData()
         passed = True
     except Exception:
         print()
         print_exc()
         print()
     finally:
-        parser.writer.closeFile()
+        if parser:
+            parser.writer.closeFile()
         end = time()
         duration = round((end - start), 5)
         if passed:

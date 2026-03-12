@@ -395,9 +395,9 @@ class ImageParser:
 
         if changeImage:
             finderPatternsVisualization.closeFile()
-            newImage, dataPoints = self.rotateImage(points, image)
+            newImage, dataPoints, isRotated = self.rotateImage(points, image)
             dataPoints["blockSize"] = avgBlockSize
-            return [newImage, dataPoints]
+            return [newImage, dataPoints, isRotated]
         else:
             dataPoints = self.getPointsPos(points)
             dataPoints["blockSize"] = avgBlockSize
@@ -435,7 +435,11 @@ class ImageParser:
         else:
             targetAngle = degrees(angleA)
 
-        return [image.rotate(targetAngle, resample=Image.BICUBIC, expand=True, fillcolor='white'), dataPoints]
+        if abs(targetAngle) > 0.5:
+            print("Rotating {} degrees.\n".format(targetAngle))
+            return [image.rotate(targetAngle, resample=Image.BICUBIC, expand=True, fillcolor='white'), dataPoints, True]
+        
+        return [image, dataPoints, False]
 
     def readFormatVersionInfo(self):
         assert len(self.blocks) == len(self.blocks[0])
@@ -690,8 +694,6 @@ class ImageParser:
         run = True
         while run:
             i, j, run = self.iterateDataBlocks(i, j)
-
-        self.decodeData()
 
     def applyMask(self, i, j):
         match self.mask:
