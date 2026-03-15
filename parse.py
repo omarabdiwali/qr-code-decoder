@@ -71,7 +71,19 @@ class ImageParser:
             'U', 'V', 'W', 'X', 'Y', 'Z', ' ', '$', '%', '*', 
             '+', '-', '.', '/', ':'
         ]
-    
+        self.eciEncodings = {
+            0: 'cp437', 1: 'iso8859_1', 2: 'cp437', 3: 'iso8859_1',
+            4: 'iso8859_2', 5: 'iso8859_3', 6: 'iso8859_4', 7: 'iso8859_5',
+            8: 'iso8859_6', 9: 'iso8859_7', 10: 'iso8859_8', 11: 'iso8859_9',
+            12: 'iso8859_10', 13: 'iso8859_11', 15: 'iso8859_13', 16: 'iso8859_14',
+            17: 'iso8859_15', 18: 'iso8859_16', 20: 'shift_jis', 21: 'cp1250',
+            22: 'cp1251', 23: 'cp1252', 24: 'cp1256', 25: 'utf_16_be',
+            26: 'utf_8', 27: 'ascii', 28: 'big5', 29: 'gb2312',
+            30: 'euc_kr', 31: 'gbk', 32: 'gb18030', 33: 'utf_16_le',
+            34: 'utf_32_be', 35: 'utf_32_le', 170: 'ascii', 899: None
+        }
+        self.activeEncoding = 'utf-8'
+
     def updateParserValues(self, image, xDiff, yDiff):
         self.data = image.load()
         self.width = image.width
@@ -850,7 +862,7 @@ class ImageParser:
                         
                         startIndex += 8
                     
-                    result += data.decode('utf-8', errors='replace')
+                    result += data.decode(self.activeEncoding, errors='replace')
                 
                 case 8:
                     length = 0
@@ -887,7 +899,27 @@ class ImageParser:
                         startIndex += 13
                     
                     result += data.decode('shift_jis', errors='replace')
+
+                case 7:
+                    indicatorByte = int(bitstring[startIndex : startIndex + 8], 2)
                     
+                    if indicatorByte < 0x80:
+                        eciValue = indicatorByte
+                        startIndex += 8
+                    elif indicatorByte < 0xC0:
+                        eciValue = int(bitstring[startIndex : startIndex + 16], 2) & 0x3FFF
+                        startIndex += 16
+                    elif indicatorByte < 0xE0:
+                        eciValue = int(bitstring[startIndex : startIndex + 24], 2) & 0x1FFFFF
+                        startIndex += 24
+                    else:
+                        raise Exception(f"Reserved/invalid ECI indicator: {indicatorByte}")
+
+                    self.activeEncoding = self.eciEncodings.get(eciValue, 'utf-8')
+                    print(f"ECI Mode: value={eciValue}, encoding={self.activeEncoding}")
+                    if eciValue == 899:
+                        print("Binary data mode (ECI 899)")
+
                 case _:
                     if result:
                         print(f"\nCurrent Result:{result}")

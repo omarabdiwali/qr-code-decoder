@@ -1,7 +1,7 @@
 # QR Code Reader & Decoder
 
 ## Overview
-A Python-based QR code processing system that analyzes images, detects structural patterns, and decodes contained data. Generates visual annotations while supporting numeric, alphanumeric, kanji, and binary data extraction.
+A Python-based QR code processing system that analyzes and crops images, detects structural patterns, and decodes contained data. Generates visual annotations while supporting numeric, alphanumeric, kanji, binary, and ECI data extraction.
 
 The following images are based on this QR code, which has the text 'hello world' embedded within it:
 
@@ -11,6 +11,7 @@ The following images are based on this QR code, which has the text 'hello world'
 
 - **Pattern Detection**  
    - Automatically identifies finder patterns (corners), timing patterns (alignment lines), and version/format information.
+   - After locating the finder patterns, it crops the image to the surrounding area of the QR code.
 
 - **Visual Debugging** - Generates layered SVG outputs showing:
   - Original QR code
@@ -21,7 +22,7 @@ The following images are based on this QR code, which has the text 'hello world'
   ![Visualization](https://i.imgur.com/Fp4OSeA.png)
 
 - **Data Decoding** - Supports:
-  - Numeric, alphanumeric, kanji, and 8-bit byte encoding
+  - Numeric, alphanumeric, kanji, ECI, and 8-bit byte encoding
   - Error correction levels (L, M, Q, H)
   - Versions 1-40 (auto-detected)
   - Mask pattern reversal
@@ -31,7 +32,7 @@ The following images are based on this QR code, which has the text 'hello world'
 
 - **Intelligent Processing**  
    - Dynamically calculates block sizes and handles orientation variations.
-   - Rotates the image based on the finder pattern positions
+   - Rotates and crops the image based on the finder pattern positions
 
 ## Requirements
 
@@ -61,18 +62,19 @@ The following images are based on this QR code, which has the text 'hello world'
 ```mermaid
 graph LR
 A[Input Image] --> B[Pattern Detection]
-B --> C[SVG Visualization]
-B --> D[Grid Creation]
-D --> E[Format Decoding]
-E --> F[Data Extraction]
-F --> G[Decoded Output]
+B --> C[Crop Image]
+C --> D[SVG Visualization]
+C --> E[Grid Creation]
+E --> F[Format Decoding]
+F --> G[Data Extraction]
+G --> H[Decoded Output]
 ```
 
 ## Supported QR Specifications
 
 | Feature              | Support Level             |
 |----------------------|---------------------------|
-| Encoding Modes       | Numeric, Alphanumeric, Byte, Kanji |
+| Encoding Modes       | Numeric, Alphanumeric, Byte, Kanji, ECI |
 | Error Correction     | L (7%), M (15%), Q (25%), H (30%) |
 | Version Detection    | 1-40 (Auto-scaled)       |
 | Mask Patterns        | 8 standard types          |
