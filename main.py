@@ -1,9 +1,29 @@
 import parse
+from xml.sax.saxutils import escape
+from requests import get
+from io import BytesIO
 from time import time
 from argparse import ArgumentParser
 from traceback import print_exc
 from PIL import Image, ImageFilter, ImageEnhance
 from collections import defaultdict
+
+argparser = ArgumentParser()
+argparser.add_argument("--input", type=str, required=True, help="Input file/url path")
+argparser.add_argument("--output", type=str, required=True, help='Output file path')
+argparser.add_argument("--is-url", action='store_true', help="Image input path is a URL")
+args = argparser.parse_args()
+
+if args.is_url:
+    print("Fetching image...\n")
+    response = get(args.input, stream=True)
+    if response.status_code == 200:
+        image = Image.open(BytesIO(response.content))
+        args.input = escape(args.input, entities={'"': "&quot;"})
+    else:
+        raise Exception(f"{response.status_code} Error retrieving image!")
+else:
+    image = Image.open(args.input)
 
 def applyFilter(image, filter):
     blackAndWhite = image.convert('L')
@@ -16,17 +36,11 @@ def applyFilter(image, filter):
     else:
         return blackAndWhite.filter(filter)
 
-def readQRCode(filter, crop=True):
+def readQRCode(image, filter, crop=True):
     try:
         parser = None
         start = time()
         passed = False
-        argparser = ArgumentParser()
-        argparser.add_argument("--input", type=str, required=True, help="Input file path")
-        argparser.add_argument("--output", type=str, required=True, help='Output file path')
-        args = argparser.parse_args()
-
-        image = Image.open(args.input)
         modifiedImage = applyFilter(image, filter)
         parser = parse.ImageParser(modifiedImage.load(), modifiedImage.width, modifiedImage.height, args.output)
         rleX = parser.runLengthEncodingX()
@@ -185,12 +199,12 @@ def readQRCode(filter, crop=True):
                 print("Processing this image took {} seconds.\n".format(duration))
             else:
                 print("Processing this image (cropping) took {} seconds. Trying second option...\n".format(duration))
-                return readQRCode(filter, False)
+                return readQRCode(image, filter, False)
         
         return passed
 
 imageFilters = [None, ImageFilter.EDGE_ENHANCE, ImageFilter.SMOOTH, ImageFilter.GaussianBlur, 'sharpness']
 for idx, filter in enumerate(imageFilters):
     print(f"Attempt #{idx+1}:")
-    if readQRCode(filter):
+    if readQRCode(image, filter):
         break

@@ -37,25 +37,38 @@ The following images are based on this QR code, which has the text 'hello world'
 ## Requirements
 
 - Python 3.8+
-- `Pillow` library:
+- [`Pillow`](https://pypi.org/project/pillow/) and [`requests`](https://pypi.org/project/requests/) libraries:
 
   ```bash
-  pip install Pillow
+  pip install Pillow requests
   ```
 
 ## Usage
 
-1. **Basic Processing**
-   ```bash
-   python main.py --input qr_image.png --output analysis.svg
-   ```
+### Processing Images
 
-2. **Output Interpretation**
-   - Open the resulting SVG in any modern browser
-   - Gold rectangles = Timing patterns
-   - Purple/Green rectangles = Format info
-   - Orange rectangles = Alignment patterns
-   - Colored blocks = Data decoding sequence
+**From a local file**
+
+```bash
+python main.py --input <image-file-path> --output <output-filename>.svg
+```
+
+**From a URL**
+
+```bash
+python main.py --input <url-image-address> --output <output-filename>.svg --is-url
+```
+
+### Output Interpretation
+
+Open the resulting SVG in any modern browser to visualize the decoded QR structure:
+
+| Color | Element |
+|:-----:|---------|
+| 🟨 Gold | Timing patterns |
+| 🟪 Purple / 🟩 Green | Format information |
+| 🟧 Orange | Version information |
+| 🟦🟥 Colored blocks | Data decoding sequence |
 
 ## Sample Workflow
 
