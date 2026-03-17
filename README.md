@@ -36,7 +36,7 @@ The following images are based on this QR code, which has the text 'hello world'
 
 ## Requirements
 
-- Python 3.8+
+- Python 3.10+
 - [`Pillow`](https://pypi.org/project/pillow/) and [`requests`](https://pypi.org/project/requests/) libraries:
 
   ```bash
@@ -45,18 +45,24 @@ The following images are based on this QR code, which has the text 'hello world'
 
 ## Usage
 
-### Processing Images
+| Argument | Type | Required | Description |
+|:--------:|------|:--------:|-------------|
+| `--input` | str | Yes | Path to the input image file or URL |
+| `--output` | str | Yes | Path for the output file (e.g., `result.svg`) |
+| `--is-url` | flag | No | Indicates that `--input` is a URL rather than a local file path |
+| `--invert` | flag | No | Enable if the QR code has inverted colors (light modules on dark background) |
 
-**From a local file**
+### Examples
 
 ```bash
-python main.py --input <image-file-path> --output <output-filename>.svg
-```
+# Local file
+python main.py --input image.png --output result.svg
 
-**From a URL**
+# From URL
+python main.py --input "https://example.com/qr.png" --output result.svg --is-url
 
-```bash
-python main.py --input <url-image-address> --output <output-filename>.svg --is-url
+# Inverted QR code
+python main.py --input image.png --output result.svg --invert
 ```
 
 ### Output Interpretation

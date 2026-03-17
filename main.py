@@ -5,13 +5,14 @@ from io import BytesIO
 from time import time
 from argparse import ArgumentParser
 from traceback import print_exc
-from PIL import Image, ImageFilter, ImageEnhance
+from PIL import Image, ImageFilter, ImageEnhance, ImageOps
 from collections import defaultdict
 
 argparser = ArgumentParser()
 argparser.add_argument("--input", type=str, required=True, help="Input file/url path")
 argparser.add_argument("--output", type=str, required=True, help='Output file path')
 argparser.add_argument("--is-url", action='store_true', help="Image input path is a URL")
+argparser.add_argument("--invert", action='store_true', help="QR colors are inverted")
 args = argparser.parse_args()
 
 if args.is_url:
@@ -27,6 +28,8 @@ else:
 
 def applyFilter(image, filter):
     blackAndWhite = image.convert('L')
+    if args.invert:
+        blackAndWhite = ImageOps.invert(blackAndWhite)
 
     if filter is None:
         return blackAndWhite
@@ -106,11 +109,6 @@ def readQRCode(image, filter, crop=True):
         finderCoords = defaultdict(list)
         # stored in order [TL, BR]
         timingBox = defaultdict(list)
-        
-        if tX:
-            print("Found timer pattern on the x-axis!")
-        if tY:
-            print("Found timer pattern on the y-axis!")
         
         assert tY is not None and tX is not None
         parser.blockSize = (tX['blockSize'] + tY['blockSize']) / 2
